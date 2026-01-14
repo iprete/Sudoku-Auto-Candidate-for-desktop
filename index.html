@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ultimate Sudoku Editor (With Clues)</title>
+    <title>Ultimate Sudoku Editor (Zero & Safe Reset)</title>
     <style>
         /* --- 1. 변수 및 기본 설정 --- */
         :root {
@@ -13,11 +13,10 @@
             --color-border: #333;
             --color-thin: #dcdcdc;
             --color-selected: #bbdffb;
-            --color-clue-selected: #e3f2fd; /* 힌트 선택 색상 */
+            --color-clue-selected: #e3f2fd;
             --color-text: #333;
             --color-error: #e53935;
             
-            /* 셀 크기 */
             --cell-size: clamp(32px, 9vw, 50px);
             
             --font-size-val: calc(var(--cell-size) * 0.55);
@@ -98,13 +97,13 @@
 
         .btn-top.active-toggle { background-color: #2e7d32; }
         .btn-orange { background-color: #ed8936; }
-        .btn-red { background-color: #e53e3e; }
+        .btn-red { background-color: #e53e3e; } /* Board Reset */
+        .btn-black { background-color: #000; } /* New Game */
 
 
-        /* --- 4. 게임 영역 (보드 + 힌트) --- */
+        /* --- 4. 게임 영역 --- */
         .game-area {
             display: grid;
-            /* 3x3 그리드: [좌측힌트] [보드] [우측힌트] / [상단힌트] [보드] [하단힌트] */
             grid-template-areas:
                 ". top ."
                 "left board right"
@@ -114,35 +113,16 @@
             gap: 0;
         }
 
-        /* 힌트 컨테이너 공통 */
-        .clue-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
+        .clue-container { display: flex; justify-content: center; align-items: center; }
+        .clue-row { display: grid; grid-template-columns: repeat(9, var(--cell-size)); margin-left: var(--border-thick); }
+        .clue-col { display: grid; grid-template-rows: repeat(9, var(--cell-size)); margin-top: var(--border-thick); }
 
-        .clue-row {
-            display: grid;
-            grid-template-columns: repeat(9, var(--cell-size));
-            /* 보드의 굵은 테두리(2px) 보정을 위해 margin-left 추가 */
-            margin-left: var(--border-thick); 
-        }
-
-        .clue-col {
-            display: grid;
-            grid-template-rows: repeat(9, var(--cell-size));
-            /* 보드의 굵은 테두리(2px) 보정을 위해 margin-top 추가 */
-            margin-top: var(--border-thick);
-        }
-
-        /* 각 영역 배치 */
         .area-top { grid-area: top; margin-bottom: 4px; }
         .area-bottom { grid-area: bottom; margin-top: 4px; }
         .area-left { grid-area: left; margin-right: 4px; }
         .area-right { grid-area: right; margin-left: 4px; }
         .area-board { grid-area: board; }
 
-        /* 힌트 셀 스타일 */
         .clue-cell {
             width: var(--cell-size);
             height: var(--cell-size);
@@ -232,23 +212,28 @@
 
         .numpad { 
             display: grid; gap: 8px; width: 100%;
+            /* 모바일: 1-5 / 6-0 / X (11개 버튼 배치) */
             grid-template-columns: repeat(5, 1fr); 
         }
 
         @media (min-width: 950px) {
             .numpad { grid-template-columns: repeat(3, 1fr); gap: 10px; }
-            button.action-btn { height: 55px; font-size: 24px; }
-            .numpad > button:last-child {
-                grid-column: 1 / -1; 
-                background-color: #f8d7da; color: #721c24; border-color: #f5c6cb;
-            }
-             .numpad > button:last-child:hover { background-color: #f5c6cb; }
+            button.action-btn { height: 50px; font-size: 22px; }
+            
+            /* PC 배치: 1-9 (3줄), 0(2칸 차지), X(1칸 차지) */
+            .btn-num-0 { grid-column: span 2; }
+            .btn-delete { grid-column: span 1; }
+        }
+
+        /* 모바일 배치: X버튼 꽉 채우기 */
+        @media (max-width: 949px) {
+            .btn-delete { grid-column: 1 / -1; background-color: #f8d7da !important; color: #721c24 !important; }
         }
 
         button.action-btn {
             border: 1px solid #e2e8f0; background: white;
             cursor: pointer; border-radius: 12px; font-size: 20px;
-            display: flex; justify-content: center; align-items: center; padding: 12px 0;
+            display: flex; justify-content: center; align-items: center; padding: 10px 0;
             transition: all 0.1s; box-shadow: 0 2px 0 #cbd5e0; color: #2d3748;
         }
         button.action-btn:active { transform: translateY(2px); box-shadow: none; }
@@ -283,7 +268,8 @@
                     <button id="btn-redo" class="btn-top" title="Ctrl+Y">Redo</button>
                     <button id="btn-auto" class="btn-top">Auto Candidate</button>
                     <button id="btn-clear-notes" class="btn-top btn-orange">Clear Memos</button>
-                    <button id="btn-reset" class="btn-top btn-red">Reset</button>
+                    <button id="btn-reset" class="btn-top btn-red">Reset Board</button>
+                    <button id="btn-new-game" class="btn-top btn-black">New Game</button>
                 </div>
             </header>
 
@@ -307,14 +293,11 @@
         ];
 
         let gridState = []; 
-        let clueState = { top: [], bottom: [], left: [], right: [] }; // 힌트 상태
+        let clueState = { top: [], bottom: [], left: [], right: [] };
         
         let historyStack = []; 
         let redoStack = [];    
-        
-        // 선택 상태: { type: 'board'|'clue', index: number, side?: string }
         let selection = null; 
-        
         let inputMode = 'normal'; 
         let isAutoCandidateOn = false;
 
@@ -326,12 +309,10 @@
         const btnRedo = document.getElementById('btn-redo');
 
         function initGame() {
-            // 보드 초기화
             gridState = Array(81).fill(null).map(() => ({
                 value: null, corner: [], center: [], colorIndex: 0 
             }));
             
-            // 힌트 초기화 (9칸씩, 빈 문자열로 시작)
             clueState = {
                 top: Array(9).fill(""),
                 bottom: Array(9).fill(""),
@@ -341,17 +322,15 @@
 
             selection = null;
             isAutoCandidateOn = false;
-            
             historyStack = [];
             redoStack = [];
+            
             updateUndoRedoUI();
             updateAutoCandidateBtn();
-
             renderAll();
             updateNumpad();
         }
 
-        // --- History Logic ---
         function saveState() {
             const state = {
                 grid: JSON.parse(JSON.stringify(gridState)),
@@ -371,20 +350,14 @@
 
         function undo() {
             if (historyStack.length === 0) return;
-            const currentState = {
-                grid: JSON.parse(JSON.stringify(gridState)),
-                clues: JSON.parse(JSON.stringify(clueState))
-            };
+            const currentState = { grid: JSON.parse(JSON.stringify(gridState)), clues: JSON.parse(JSON.stringify(clueState)) };
             redoStack.push(currentState);
             restoreState(historyStack.pop());
         }
 
         function redo() {
             if (redoStack.length === 0) return;
-            const currentState = {
-                grid: JSON.parse(JSON.stringify(gridState)),
-                clues: JSON.parse(JSON.stringify(clueState))
-            };
+            const currentState = { grid: JSON.parse(JSON.stringify(gridState)), clues: JSON.parse(JSON.stringify(clueState)) };
             historyStack.push(currentState);
             restoreState(redoStack.pop());
         }
@@ -394,7 +367,6 @@
             btnRedo.disabled = redoStack.length === 0;
         }
 
-        // --- Rendering ---
         function renderAll() {
             renderBoard();
             renderClues('top');
@@ -437,7 +409,7 @@
 
             gridState.forEach((cell, index) => {
                 const cellDiv = document.createElement('div');
-                cellDiv.className = 'cell';
+                cellDiv.classList.add('cell');
                 
                 if (cell.colorIndex > 0) {
                     const bgDiv = document.createElement('div');
@@ -486,16 +458,13 @@
         function renderClues(side) {
             const container = document.getElementById(`clues-${side}`);
             container.innerHTML = '';
-            
             clueState[side].forEach((val, index) => {
                 const div = document.createElement('div');
                 div.className = 'clue-cell';
                 div.textContent = val;
-                
                 if (selection && selection.type === 'clue' && selection.side === side && selection.index === index) {
                     div.classList.add('selected');
                 }
-                
                 div.onclick = () => {
                     selection = { type: 'clue', side: side, index: index };
                     renderAll();
@@ -506,76 +475,89 @@
 
         function updateNumpad() {
             numpadElement.innerHTML = '';
+            // 1~9 버튼
             for (let i = 1; i <= 9; i++) {
-                const btn = document.createElement('button');
-                btn.className = 'action-btn';
-                if (inputMode === 'color') {
-                    btn.style.backgroundColor = colorPalette[i]; 
-                    btn.classList.add('color-swatch');
-                    btn.onclick = () => handleInput(i);
-                } else {
-                    btn.style.backgroundColor = 'white';
-                    btn.textContent = i;
-                    btn.onclick = () => handleInput(i);
-                }
-                numpadElement.appendChild(btn);
+                createNumBtn(i);
             }
+            // 0 버튼
+            createNumBtn(0, 'btn-num-0');
+            
+            // X 버튼
             const delBtn = document.createElement('button');
-            delBtn.className = 'action-btn';
+            delBtn.className = 'action-btn btn-delete';
             delBtn.textContent = 'X';
             delBtn.onclick = handleDelete;
             numpadElement.appendChild(delBtn);
         }
 
-        // --- Input Logic ---
+        function createNumBtn(num, extraClass = '') {
+            const btn = document.createElement('button');
+            btn.className = `action-btn ${extraClass}`;
+            if (inputMode === 'color' && num !== 0) {
+                btn.style.backgroundColor = colorPalette[num]; 
+                btn.classList.add('color-swatch');
+                btn.onclick = () => handleInput(num);
+            } else {
+                btn.style.backgroundColor = 'white';
+                btn.textContent = num;
+                btn.onclick = () => handleInput(num);
+            }
+            numpadElement.appendChild(btn);
+        }
+
         function handleInput(inputVal) {
             if (!selection) return;
             saveState();
 
-            // 1. 외부 힌트 입력 (Append Mode)
+            // 1. 외부 힌트 (0 허용, 문자열 연결)
             if (selection.type === 'clue') {
                 const currentVal = clueState[selection.side][selection.index];
-                // 3자리 넘어가면 입력 방지 (UI 깨짐 방지)
-                if (currentVal.length < 3) {
+                if (currentVal.length < 3) { // 최대 3자리
                     clueState[selection.side][selection.index] = currentVal + inputVal.toString();
                 }
                 renderAll();
                 return;
             }
 
-            // 2. 보드 입력 (Standard Mode)
+            // 2. 보드 입력 (0도 일단 입력 허용, 보통 보드엔 1-9지만 유저가 원할 수 있음)
             const cell = gridState[selection.index];
             let valueChanged = false;
 
             if (inputMode === 'color') {
-                if (cell.colorIndex === inputVal) cell.colorIndex = 0;
-                else cell.colorIndex = inputVal;
+                if (inputVal !== 0) { // 0번 색상은 없음
+                    if (cell.colorIndex === inputVal) cell.colorIndex = 0;
+                    else cell.colorIndex = inputVal;
+                }
             } else if (inputMode === 'normal') {
-                cell.value = inputVal;
+                cell.value = inputVal === 0 ? null : inputVal; // 보드에서 0은 보통 지우기지만, 명시적 0 요청이 있다면 `inputVal`로 저장. 여기선 0=Clear로 처리하거나 0 표시. 스도쿠 룰상 0은 없음 -> 지우기로 처리? 아니면 표시?
+                // 요청: "바깥 그리드에 0을 못 넣게 하면 어떡해" -> 바깥은 해결.
+                // 안쪽은? 일단 0 누르면 0 표시되게 해드림 (변형 스도쿠 대비)
+                if (inputVal === 0) cell.value = 0; 
+                else cell.value = inputVal;
+
                 cell.corner = []; 
                 cell.center = [];
                 valueChanged = true;
             } else if (inputMode === 'corner') {
-                if (cell.value === null) {
+                 if (inputVal !== 0 && cell.value === null) {
                     if (cell.corner.includes(inputVal)) cell.corner = cell.corner.filter(n => n !== inputVal);
                     else cell.corner.push(inputVal);
                 }
             } else if (inputMode === 'center') {
-                if (cell.value === null) {
+                if (inputVal !== 0 && cell.value === null) {
                     if (cell.center.includes(inputVal)) cell.center = cell.center.filter(n => n !== inputVal);
                     else cell.center.push(inputVal);
                 }
             }
 
             if (isAutoCandidateOn && valueChanged) refreshAllCandidates();
-            renderBoard(); // 보드만 갱신해도 됨
+            renderBoard();
         }
 
         function handleDelete() {
             if (!selection) return;
             saveState();
 
-            // 1. 외부 힌트 삭제 (Backspace Mode)
             if (selection.type === 'clue') {
                 const currentVal = clueState[selection.side][selection.index];
                 if (currentVal.length > 0) {
@@ -585,7 +567,6 @@
                 return;
             }
 
-            // 2. 보드 삭제
             const cell = gridState[selection.index];
             let valueDeleted = false;
 
@@ -636,16 +617,16 @@
 
                 for (let c = 0; c < 9; c++) {
                     const val = gridState[row * 9 + c].value;
-                    if (val) candidates.delete(val);
+                    if (val && val !== 0) candidates.delete(val);
                 }
                 for (let r = 0; r < 9; r++) {
                     const val = gridState[r * 9 + col].value;
-                    if (val) candidates.delete(val);
+                    if (val && val !== 0) candidates.delete(val);
                 }
                 for (let r = 0; r < 3; r++) {
                     for (let c = 0; c < 3; c++) {
                         const val = gridState[(boxRow + r) * 9 + (boxCol + c)].value;
-                        if (val) candidates.delete(val);
+                        if (val && val !== 0) candidates.delete(val);
                     }
                 }
                 gridState[i].center = Array.from(candidates);
@@ -653,7 +634,7 @@
         }
 
         function clearAnnotations() {
-            if (!confirm("모든 메모를 삭제하시겠습니까? (숫자/색상/힌트 유지)")) return;
+            if (!confirm("모든 메모를 삭제하시겠습니까? (숫자/힌트/색상 유지)")) return;
             saveState(); 
             gridState.forEach(cell => {
                 cell.corner = [];
@@ -662,15 +643,24 @@
             renderBoard();
         }
 
-        function resetGame() {
-            if (confirm("모든 보드 내용과 힌트를 초기화 하시겠습니까?")) {
+        // [수정됨] Reset Board: 보드 안쪽만 지움 (힌트 유지)
+        function resetBoardOnly() {
+            if (confirm("보드 안쪽 내용을 모두 지우시겠습니까? (바깥쪽 힌트는 유지됩니다)")) {
                 saveState();
                 gridState = Array(81).fill(null).map(() => ({
                     value: null, corner: [], center: [], colorIndex: 0 
                 }));
-                clueState = { top: Array(9).fill(""), bottom: Array(9).fill(""), left: Array(9).fill(""), right: Array(9).fill("") };
-                selection = null;
-                renderAll();
+                // clueState는 건드리지 않음
+                if (selection && selection.type === 'board') selection = null;
+                renderBoard();
+            }
+        }
+
+        // [추가됨] New Game: 힌트 포함 전체 초기화
+        function newGame() {
+            if (confirm("새 게임을 시작하시겠습니까? (모든 힌트와 보드가 초기화됩니다)")) {
+                saveState();
+                initGame(); // 완전 초기화
             }
         }
 
@@ -684,24 +674,24 @@
         });
 
         btnAuto.addEventListener('click', toggleAutoCandidate);
-        document.getElementById('btn-reset').addEventListener('click', resetGame);
+        document.getElementById('btn-reset').addEventListener('click', resetBoardOnly);
+        document.getElementById('btn-new-game').addEventListener('click', newGame);
         document.getElementById('btn-clear-notes').addEventListener('click', clearAnnotations);
         
         btnUndo.addEventListener('click', undo);
         btnRedo.addEventListener('click', redo);
 
         document.addEventListener('keydown', (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
-                e.preventDefault(); undo(); return;
-            }
-            if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
-                e.preventDefault(); redo(); return;
-            }
-            if (e.key >= '1' && e.key <= '9') handleInput(parseInt(e.key));
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+            if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); redo(); return; }
+            
+            // 0~9 입력 허용
+            if (e.key >= '0' && e.key <= '9') handleInput(parseInt(e.key));
             else if (e.key === 'Backspace' || e.key === 'Delete') handleDelete();
+            
+            // 방향키
             else if (e.key.startsWith('Arrow')) {
                 e.preventDefault();
-                // 키보드 이동 로직 (보드 내에서만 작동)
                 if (selection && selection.type === 'board') {
                     let idx = selection.index;
                     if (e.key === 'ArrowRight') idx = (idx + 1) % 81;
@@ -709,9 +699,6 @@
                     if (e.key === 'ArrowUp') idx = (idx - 9 + 81) % 81;
                     if (e.key === 'ArrowDown') idx = (idx + 9) % 81;
                     selection = { type: 'board', index: idx };
-                    renderAll();
-                } else if (!selection) {
-                    selection = { type: 'board', index: 0 };
                     renderAll();
                 }
             }
