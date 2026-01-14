@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ultimate Sudoku Editor (Perfect Layout)</title>
+    <title>Ultimate Sudoku Editor (With Clues)</title>
     <style>
         /* --- 1. 변수 및 기본 설정 --- */
         :root {
@@ -13,14 +13,16 @@
             --color-border: #333;
             --color-thin: #dcdcdc;
             --color-selected: #bbdffb;
+            --color-clue-selected: #e3f2fd; /* 힌트 선택 색상 */
             --color-text: #333;
             --color-error: #e53935;
             
-            /* 기본 셀 크기 (모바일 기준) */
-            --cell-size: clamp(32px, 10.5vw, 50px);
+            /* 셀 크기 */
+            --cell-size: clamp(32px, 9vw, 50px);
             
             --font-size-val: calc(var(--cell-size) * 0.55);
             --font-size-note: calc(var(--cell-size) * 0.22);
+            --font-size-clue: calc(var(--cell-size) * 0.45);
         }
 
         * { box-sizing: border-box; }
@@ -35,7 +37,7 @@
             background-color: #f4f6f8;
         }
 
-        /* --- 2. 메인 레이아웃 (반응형) --- */
+        /* --- 2. 메인 레이아웃 --- */
         .container {
             background: white;
             padding: 20px;
@@ -44,75 +46,124 @@
             user-select: none;
             
             width: fit-content;
-            max-width: 98vw;
+            max-width: 99vw;
             margin: 10px;
             
             display: flex;
-            flex-direction: column; /* 모바일 기본: 세로 정렬 */
+            flex-direction: column; 
             align-items: center;
             gap: 20px;
-            transition: all 0.3s ease;
         }
 
-        /* [PC/태블릿 가로 모드] 미디어 쿼리 */
-        @media (min-width: 900px) {
+        @media (min-width: 950px) {
             .container {
-                flex-direction: row; /* 가로 정렬 */
-                align-items: flex-start; /* 위쪽 정렬 */
+                flex-direction: row; 
+                align-items: flex-start;
                 padding: 40px;
-                gap: 50px;
+                gap: 40px;
             }
-            
-            :root {
-                --cell-size: 58px; /* PC 셀 크기 */
-            }
+            :root { --cell-size: 54px; }
         }
 
-        /* --- 3. 사이드바 (컨트롤 영역) --- */
+        /* --- 3. 사이드바 --- */
         .sidebar {
             display: flex;
             flex-direction: column;
             align-items: center;
             width: 100%;
-            max-width: 450px;
+            max-width: 400px;
         }
 
-        @media (min-width: 900px) {
-            .sidebar {
-                width: 320px; /* PC 사이드바 너비 고정 */
-                align-items: stretch; /* 꽉 채우기 */
-            }
+        @media (min-width: 950px) {
+            .sidebar { width: 300px; align-items: stretch; }
         }
 
         header { margin-bottom: 20px; text-align: center; }
-        h1 { margin: 0 0 10px 0; font-size: 1.8rem; color: #1a1a1a; letter-spacing: -0.5px; }
+        h1 { margin: 0 0 10px 0; font-size: 1.8rem; color: #1a1a1a; }
 
-        /* 상단 버튼 그룹 */
         .top-controls {
-            display: flex;
-            justify-content: center;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 20px;
+            display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-bottom: 20px;
         }
         
         .btn-top {
-            padding: 8px 14px;
+            padding: 8px 12px;
             background: #4a5568; color: white; border: none;
             border-radius: 8px; cursor: pointer;
             font-size: 13px; font-weight: 600;
             transition: all 0.2s;
         }
-        .btn-top:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .btn-top:hover { transform: translateY(-1px); }
         .btn-top:active { transform: translateY(0); }
-        .btn-top:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-top:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        .btn-top.active-toggle { background-color: #2e7d32; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2); }
+        .btn-top.active-toggle { background-color: #2e7d32; }
         .btn-orange { background-color: #ed8936; }
         .btn-red { background-color: #e53e3e; }
 
 
-        /* --- 4. 보드 스타일 --- */
+        /* --- 4. 게임 영역 (보드 + 힌트) --- */
+        .game-area {
+            display: grid;
+            /* 3x3 그리드: [좌측힌트] [보드] [우측힌트] / [상단힌트] [보드] [하단힌트] */
+            grid-template-areas:
+                ". top ."
+                "left board right"
+                ". bottom .";
+            grid-template-columns: var(--cell-size) auto var(--cell-size);
+            grid-template-rows: var(--cell-size) auto var(--cell-size);
+            gap: 0;
+        }
+
+        /* 힌트 컨테이너 공통 */
+        .clue-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .clue-row {
+            display: grid;
+            grid-template-columns: repeat(9, var(--cell-size));
+            /* 보드의 굵은 테두리(2px) 보정을 위해 margin-left 추가 */
+            margin-left: var(--border-thick); 
+        }
+
+        .clue-col {
+            display: grid;
+            grid-template-rows: repeat(9, var(--cell-size));
+            /* 보드의 굵은 테두리(2px) 보정을 위해 margin-top 추가 */
+            margin-top: var(--border-thick);
+        }
+
+        /* 각 영역 배치 */
+        .area-top { grid-area: top; margin-bottom: 4px; }
+        .area-bottom { grid-area: bottom; margin-top: 4px; }
+        .area-left { grid-area: left; margin-right: 4px; }
+        .area-right { grid-area: right; margin-left: 4px; }
+        .area-board { grid-area: board; }
+
+        /* 힌트 셀 스타일 */
+        .clue-cell {
+            width: var(--cell-size);
+            height: var(--cell-size);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: var(--font-size-clue);
+            color: #555;
+            cursor: pointer;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        .clue-cell:hover { background-color: rgba(0,0,0,0.05); }
+        .clue-cell.selected { 
+            background-color: var(--color-clue-selected); 
+            color: #1565c0;
+            border: 2px solid #90caf9;
+        }
+
+
+        /* --- 5. 보드 스타일 --- */
         .board {
             display: inline-grid;
             grid-template-columns: repeat(9, var(--cell-size));
@@ -143,19 +194,16 @@
             border-bottom: var(--border-thin) solid var(--color-thin);
         }
 
-        /* 테두리 로직 */
         .cell:nth-child(3n) { border-right: var(--border-thick) solid var(--color-border); }
         .cell:nth-child(n+19):nth-child(-n+27),
         .cell:nth-child(n+46):nth-child(-n+54) { border-bottom: var(--border-thick) solid var(--color-border); }
         .cell:nth-child(9n) { border-right: var(--border-thick) solid var(--color-border); }
         .cell:nth-child(n+73) { border-bottom: var(--border-thick) solid var(--color-border); }
 
-        /* 셀 상태 */
         .cell.selected { background-color: var(--color-selected) !important; }
         .cell.error { color: var(--color-error) !important; }
         .cell-bg-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; opacity: 0.6; }
 
-        /* 메모 스타일 */
         .candidates { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
         .candidates.corner {
             display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
@@ -168,7 +216,9 @@
         }
 
 
-        /* --- 5. 입력 컨트롤 (모드 + 숫자패드) --- */
+        /* --- 6. 입력 컨트롤 --- */
+        .input-controls { width: 100%; }
+
         .mode-toggles { 
             display: flex; gap: 4px; margin-bottom: 15px; background: #e2e8f0;
             padding: 5px; border-radius: 10px; width: 100%;
@@ -180,51 +230,31 @@
         }
         .mode-btn.active { background-color: white; color: #2d3748; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
 
-        /* 숫자 패드 레이아웃 */
         .numpad { 
-            display: grid; 
-            gap: 8px; 
-            width: 100%;
-            /* 모바일: 5열 */
+            display: grid; gap: 8px; width: 100%;
             grid-template-columns: repeat(5, 1fr); 
         }
 
-        /* PC 모드: 숫자 패드 레이아웃 변경 */
-        @media (min-width: 900px) {
-            .numpad {
-                grid-template-columns: repeat(3, 1fr); /* 3열 계산기 배열 */
-                gap: 10px;
-            }
-            /* PC에서는 버튼 높이 키움 */
-            button.action-btn {
-                height: 55px;
-                font-size: 24px;
-            }
-            /* [수정됨] 가로 모드에서 마지막 버튼(X)을 꽉 채우기 */
+        @media (min-width: 950px) {
+            .numpad { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+            button.action-btn { height: 55px; font-size: 24px; }
             .numpad > button:last-child {
-                grid-column: 1 / -1; /* 첫 번째 라인부터 마지막 라인까지 스팬 */
-                background-color: #f8d7da; /* 삭제 버튼 강조색 (선택사항) */
-                color: #721c24;
-                border-color: #f5c6cb;
+                grid-column: 1 / -1; 
+                background-color: #f8d7da; color: #721c24; border-color: #f5c6cb;
             }
-             .numpad > button:last-child:hover {
-                  background-color: #f5c6cb;
-             }
+             .numpad > button:last-child:hover { background-color: #f5c6cb; }
         }
 
         button.action-btn {
             border: 1px solid #e2e8f0; background: white;
             cursor: pointer; border-radius: 12px; font-size: 20px;
             display: flex; justify-content: center; align-items: center; padding: 12px 0;
-            transition: all 0.1s;
-            box-shadow: 0 2px 0 #cbd5e0;
-            color: #2d3748;
+            transition: all 0.1s; box-shadow: 0 2px 0 #cbd5e0; color: #2d3748;
         }
         button.action-btn:active { transform: translateY(2px); box-shadow: none; }
         
         button.color-swatch {
-            border: 2px solid rgba(0,0,0,0.1);
-            color: transparent !important; 
+            border: 2px solid rgba(0,0,0,0.1); color: transparent !important; 
         }
         button.color-swatch:hover { border-color: rgba(0,0,0,0.3); }
 
@@ -235,7 +265,15 @@
 </head>
 <body>
     <div class="container">
-        <div id="sudoku-board" class="board"></div>
+        <div class="game-area">
+            <div class="clue-container area-top"><div id="clues-top" class="clue-row"></div></div>
+            <div class="clue-container area-left"><div id="clues-left" class="clue-col"></div></div>
+            
+            <div id="sudoku-board" class="board area-board"></div>
+            
+            <div class="clue-container area-right"><div id="clues-right" class="clue-col"></div></div>
+            <div class="clue-container area-bottom"><div id="clues-bottom" class="clue-row"></div></div>
+        </div>
 
         <div class="sidebar">
             <header>
@@ -269,10 +307,14 @@
         ];
 
         let gridState = []; 
+        let clueState = { top: [], bottom: [], left: [], right: [] }; // 힌트 상태
+        
         let historyStack = []; 
         let redoStack = [];    
         
-        let selectedCellIndex = null;
+        // 선택 상태: { type: 'board'|'clue', index: number, side?: string }
+        let selection = null; 
+        
         let inputMode = 'normal'; 
         let isAutoCandidateOn = false;
 
@@ -284,13 +326,20 @@
         const btnRedo = document.getElementById('btn-redo');
 
         function initGame() {
+            // 보드 초기화
             gridState = Array(81).fill(null).map(() => ({
-                value: null,
-                corner: [], 
-                center: [], 
-                colorIndex: 0 
+                value: null, corner: [], center: [], colorIndex: 0 
             }));
-            selectedCellIndex = null;
+            
+            // 힌트 초기화 (9칸씩, 빈 문자열로 시작)
+            clueState = {
+                top: Array(9).fill(""),
+                bottom: Array(9).fill(""),
+                left: Array(9).fill(""),
+                right: Array(9).fill("")
+            };
+
+            selection = null;
             isAutoCandidateOn = false;
             
             historyStack = [];
@@ -298,33 +347,46 @@
             updateUndoRedoUI();
             updateAutoCandidateBtn();
 
-            renderBoard();
+            renderAll();
             updateNumpad();
         }
 
+        // --- History Logic ---
         function saveState() {
-            const currentState = JSON.parse(JSON.stringify(gridState));
-            historyStack.push(currentState);
+            const state = {
+                grid: JSON.parse(JSON.stringify(gridState)),
+                clues: JSON.parse(JSON.stringify(clueState))
+            };
+            historyStack.push(state);
             redoStack = [];
+            updateUndoRedoUI();
+        }
+
+        function restoreState(state) {
+            gridState = state.grid;
+            clueState = state.clues;
+            renderAll();
             updateUndoRedoUI();
         }
 
         function undo() {
             if (historyStack.length === 0) return;
-            const currentState = JSON.parse(JSON.stringify(gridState));
+            const currentState = {
+                grid: JSON.parse(JSON.stringify(gridState)),
+                clues: JSON.parse(JSON.stringify(clueState))
+            };
             redoStack.push(currentState);
-            gridState = historyStack.pop();
-            renderBoard();
-            updateUndoRedoUI();
+            restoreState(historyStack.pop());
         }
 
         function redo() {
             if (redoStack.length === 0) return;
-            const currentState = JSON.parse(JSON.stringify(gridState));
+            const currentState = {
+                grid: JSON.parse(JSON.stringify(gridState)),
+                clues: JSON.parse(JSON.stringify(clueState))
+            };
             historyStack.push(currentState);
-            gridState = redoStack.pop();
-            renderBoard();
-            updateUndoRedoUI();
+            restoreState(redoStack.pop());
         }
 
         function updateUndoRedoUI() {
@@ -332,11 +394,19 @@
             btnRedo.disabled = redoStack.length === 0;
         }
 
+        // --- Rendering ---
+        function renderAll() {
+            renderBoard();
+            renderClues('top');
+            renderClues('bottom');
+            renderClues('left');
+            renderClues('right');
+        }
+
         function getConflictIndices() {
             const conflicts = new Set();
             for (let i = 0; i < 81; i++) {
                 if (!gridState[i].value) continue;
-
                 const val = gridState[i].value;
                 const row = Math.floor(i / 9);
                 const col = i % 9;
@@ -345,22 +415,16 @@
 
                 for (let c = 0; c < 9; c++) {
                     const idx = row * 9 + c;
-                    if (idx !== i && gridState[idx].value === val) {
-                        conflicts.add(i); conflicts.add(idx);
-                    }
+                    if (idx !== i && gridState[idx].value === val) { conflicts.add(i); conflicts.add(idx); }
                 }
                 for (let r = 0; r < 9; r++) {
                     const idx = r * 9 + col;
-                    if (idx !== i && gridState[idx].value === val) {
-                        conflicts.add(i); conflicts.add(idx);
-                    }
+                    if (idx !== i && gridState[idx].value === val) { conflicts.add(i); conflicts.add(idx); }
                 }
                 for (let r = 0; r < 3; r++) {
                     for (let c = 0; c < 3; c++) {
                         const idx = (boxRow + r) * 9 + (boxCol + c);
-                        if (idx !== i && gridState[idx].value === val) {
-                            conflicts.add(i); conflicts.add(idx);
-                        }
+                        if (idx !== i && gridState[idx].value === val) { conflicts.add(i); conflicts.add(idx); }
                     }
                 }
             }
@@ -373,7 +437,7 @@
 
             gridState.forEach((cell, index) => {
                 const cellDiv = document.createElement('div');
-                cellDiv.classList.add('cell');
+                cellDiv.className = 'cell';
                 
                 if (cell.colorIndex > 0) {
                     const bgDiv = document.createElement('div');
@@ -382,7 +446,9 @@
                     cellDiv.appendChild(bgDiv);
                 }
 
-                if (index === selectedCellIndex) cellDiv.classList.add('selected');
+                if (selection && selection.type === 'board' && selection.index === index) {
+                    cellDiv.classList.add('selected');
+                }
                 if (conflictIndices.has(index)) cellDiv.classList.add('error');
 
                 if (cell.value) {
@@ -410,11 +476,31 @@
                 }
 
                 cellDiv.onclick = () => {
-                    selectedCellIndex = index;
-                    renderBoard();
+                    selection = { type: 'board', index: index };
+                    renderAll();
                 };
-                
                 boardElement.appendChild(cellDiv);
+            });
+        }
+
+        function renderClues(side) {
+            const container = document.getElementById(`clues-${side}`);
+            container.innerHTML = '';
+            
+            clueState[side].forEach((val, index) => {
+                const div = document.createElement('div');
+                div.className = 'clue-cell';
+                div.textContent = val;
+                
+                if (selection && selection.type === 'clue' && selection.side === side && selection.index === index) {
+                    div.classList.add('selected');
+                }
+                
+                div.onclick = () => {
+                    selection = { type: 'clue', side: side, index: index };
+                    renderAll();
+                };
+                container.appendChild(div);
             });
         }
 
@@ -437,21 +523,28 @@
             const delBtn = document.createElement('button');
             delBtn.className = 'action-btn';
             delBtn.textContent = 'X';
-            // 삭제 버튼 스타일은 CSS에서 미디어 쿼리로 덮어씌워짐 (PC모드)
-            // 모바일 기본 스타일:
-            delBtn.style.color = '#d32f2f';
-            delBtn.style.fontWeight = 'bold';
-            delBtn.style.backgroundColor = 'white';
-            
             delBtn.onclick = handleDelete;
             numpadElement.appendChild(delBtn);
         }
 
+        // --- Input Logic ---
         function handleInput(inputVal) {
-            if (selectedCellIndex === null) return;
+            if (!selection) return;
             saveState();
 
-            const cell = gridState[selectedCellIndex];
+            // 1. 외부 힌트 입력 (Append Mode)
+            if (selection.type === 'clue') {
+                const currentVal = clueState[selection.side][selection.index];
+                // 3자리 넘어가면 입력 방지 (UI 깨짐 방지)
+                if (currentVal.length < 3) {
+                    clueState[selection.side][selection.index] = currentVal + inputVal.toString();
+                }
+                renderAll();
+                return;
+            }
+
+            // 2. 보드 입력 (Standard Mode)
+            const cell = gridState[selection.index];
             let valueChanged = false;
 
             if (inputMode === 'color') {
@@ -475,14 +568,25 @@
             }
 
             if (isAutoCandidateOn && valueChanged) refreshAllCandidates();
-            renderBoard();
+            renderBoard(); // 보드만 갱신해도 됨
         }
 
         function handleDelete() {
-            if (selectedCellIndex === null) return;
+            if (!selection) return;
             saveState();
 
-            const cell = gridState[selectedCellIndex];
+            // 1. 외부 힌트 삭제 (Backspace Mode)
+            if (selection.type === 'clue') {
+                const currentVal = clueState[selection.side][selection.index];
+                if (currentVal.length > 0) {
+                    clueState[selection.side][selection.index] = currentVal.slice(0, -1);
+                }
+                renderAll();
+                return;
+            }
+
+            // 2. 보드 삭제
+            const cell = gridState[selection.index];
             let valueDeleted = false;
 
             if (inputMode === 'color') {
@@ -549,7 +653,7 @@
         }
 
         function clearAnnotations() {
-            if (!confirm("모든 메모를 삭제하시겠습니까? (숫자와 색상은 유지됩니다)")) return;
+            if (!confirm("모든 메모를 삭제하시겠습니까? (숫자/색상/힌트 유지)")) return;
             saveState(); 
             gridState.forEach(cell => {
                 cell.corner = [];
@@ -559,13 +663,14 @@
         }
 
         function resetGame() {
-            if (confirm("정말 모든 내용을 초기화 하시겠습니까?")) {
+            if (confirm("모든 보드 내용과 힌트를 초기화 하시겠습니까?")) {
                 saveState();
                 gridState = Array(81).fill(null).map(() => ({
                     value: null, corner: [], center: [], colorIndex: 0 
                 }));
-                selectedCellIndex = null;
-                renderBoard();
+                clueState = { top: Array(9).fill(""), bottom: Array(9).fill(""), left: Array(9).fill(""), right: Array(9).fill("") };
+                selection = null;
+                renderAll();
             }
         }
 
@@ -596,14 +701,19 @@
             else if (e.key === 'Backspace' || e.key === 'Delete') handleDelete();
             else if (e.key.startsWith('Arrow')) {
                 e.preventDefault();
-                if (selectedCellIndex === null) selectedCellIndex = 0;
-                else {
-                    if (e.key === 'ArrowRight') selectedCellIndex = (selectedCellIndex + 1) % 81;
-                    if (e.key === 'ArrowLeft') selectedCellIndex = (selectedCellIndex - 1 + 81) % 81;
-                    if (e.key === 'ArrowUp') selectedCellIndex = (selectedCellIndex - 9 + 81) % 81;
-                    if (e.key === 'ArrowDown') selectedCellIndex = (selectedCellIndex + 9) % 81;
+                // 키보드 이동 로직 (보드 내에서만 작동)
+                if (selection && selection.type === 'board') {
+                    let idx = selection.index;
+                    if (e.key === 'ArrowRight') idx = (idx + 1) % 81;
+                    if (e.key === 'ArrowLeft') idx = (idx - 1 + 81) % 81;
+                    if (e.key === 'ArrowUp') idx = (idx - 9 + 81) % 81;
+                    if (e.key === 'ArrowDown') idx = (idx + 9) % 81;
+                    selection = { type: 'board', index: idx };
+                    renderAll();
+                } else if (!selection) {
+                    selection = { type: 'board', index: 0 };
+                    renderAll();
                 }
-                renderBoard();
             }
             if (e.key.toLowerCase() === 'z' && !e.ctrlKey) document.querySelector('[data-mode="normal"]').click();
             if (e.key.toLowerCase() === 'x') document.querySelector('[data-mode="corner"]').click();
