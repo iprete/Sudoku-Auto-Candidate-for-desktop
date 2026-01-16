@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sudoku Editor (Smart Logic)</title>
+    <title>Sudoku Editor (Fix: Center Only Restore)</title>
     <style>
         /* --- 1. 변수 및 기본 설정 --- */
         :root {
@@ -12,9 +12,10 @@
             
             --color-border: #333;
             --color-thin: #dcdcdc;
-            --color-selected: #bbdffb;      /* 기본 선택 */
-            --color-multi: #e3f2fd;         /* 다중 선택 */
-            --color-highlight: #ffeb3b;     /* 하이라이트 */
+            --color-selected: #bbdffb;
+            --color-multi: #e3f2fd;
+            --color-highlight: #ffeb3b;
+            --color-same-val: #fff9c4;
             
             --color-clue-selected: #e3f2fd;
             --color-text: #333;
@@ -96,7 +97,7 @@
         .btn-top:disabled { opacity: 0.5; cursor: not-allowed; }
 
         .btn-top.active-toggle { background-color: #2e7d32; }
-        .btn-top.active-highlight { background-color: #fdd835; color: black; } 
+        .btn-top.active-highlight { background-color: #fdd835; color: black; }
         
         .btn-orange { background-color: #ed8936; }
         .btn-red { background-color: #e53e3e; } 
@@ -346,7 +347,7 @@
             // Include 'manuallyRemoved' array in initial state
             const initialGrid = Array(81).fill(null).map(() => ({ 
                 value: null, corner: [], center: [], colorIndex: 0, 
-                manuallyRemoved: [] // Track user-deleted candidates
+                manuallyRemoved: [] 
             }));
             const initialClues = { top: Array(9).fill(""), bottom: Array(9).fill(""), left: Array(9).fill(""), right: Array(9).fill("") };
 
@@ -370,7 +371,6 @@
             renderAll(); updateNumpad();
         }
 
-        // --- Key Input Helper ---
         function getNumberFromKey(e) {
             if (e.code.startsWith('Digit')) { const num = parseInt(e.code.replace('Digit', '')); if (!isNaN(num)) return num; }
             if (e.code.startsWith('Numpad')) { const num = parseInt(e.code.replace('Numpad', '')); if (!isNaN(num)) return num; }
@@ -378,7 +378,7 @@
             return null;
         }
 
-        // --- Auto Candidate Logic (Smart Restore) ---
+        // --- Auto Candidate Logic (Smart Restore - Center Only) ---
         function getValidCandidates(index) {
             const candidates = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9]);
             const row = Math.floor(index / 9); const col = index % 9; const boxRow = Math.floor(row / 3) * 3; const boxCol = Math.floor(col / 3) * 3;
@@ -405,8 +405,11 @@
                 if (cell.manuallyRemoved && cell.manuallyRemoved.includes(restoredVal)) return;
 
                 if (isValidPlacement(peerIdx, restoredVal)) {
-                    if (!cell.center.includes(restoredVal)) { cell.center.push(restoredVal); cell.center.sort((a,b)=>a-b); }
-                    if (!cell.corner.includes(restoredVal)) { cell.corner.push(restoredVal); cell.corner.sort((a,b)=>a-b); }
+                    // FIX: Only restore to CENTER notes
+                    if (!cell.center.includes(restoredVal)) { 
+                        cell.center.push(restoredVal); 
+                        cell.center.sort((a,b)=>a-b); 
+                    }
                 }
             });
         }
@@ -538,7 +541,7 @@
             });
         }
 
-        // --- Input Handling (Updated for Manual Removal Tracking) ---
+        // --- Input Handling ---
         function handleInput(inputVal, forceMode = null) {
             if (isHighlightMode && inputVal !== 0) {
                 if (highlightTarget === inputVal) highlightTarget = null;
@@ -579,12 +582,10 @@
                     if (inputVal !== 0 && (cell.value === null || cell.value === 0)) {
                         if (cell.corner.includes(inputVal)) {
                             cell.corner = cell.corner.filter(n => n !== inputVal);
-                            // User intentionally removed it: remember this
                             if(!cell.manuallyRemoved) cell.manuallyRemoved = [];
                             if(!cell.manuallyRemoved.includes(inputVal)) cell.manuallyRemoved.push(inputVal);
                         } else {
                             cell.corner.push(inputVal);
-                            // User intentionally added it: forget removal
                             if(cell.manuallyRemoved) cell.manuallyRemoved = cell.manuallyRemoved.filter(n => n !== inputVal);
                         }
                     }
@@ -592,12 +593,10 @@
                     if (inputVal !== 0 && (cell.value === null || cell.value === 0)) {
                         if (cell.center.includes(inputVal)) {
                             cell.center = cell.center.filter(n => n !== inputVal);
-                            // User intentionally removed it
                             if(!cell.manuallyRemoved) cell.manuallyRemoved = [];
                             if(!cell.manuallyRemoved.includes(inputVal)) cell.manuallyRemoved.push(inputVal);
                         } else {
                             cell.center.push(inputVal);
-                            // User intentionally added it
                             if(cell.manuallyRemoved) cell.manuallyRemoved = cell.manuallyRemoved.filter(n => n !== inputVal);
                         }
                     }
