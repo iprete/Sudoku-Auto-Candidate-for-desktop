@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sudoku Editor (Perfect Auto-Candidate)</title>
+    <title>Sudoku Editor (Single Select)</title>
     <style>
         /* --- 1. 변수 및 기본 설정 --- */
         :root {
@@ -13,7 +13,6 @@
             --color-border: #333;
             --color-thin: #dcdcdc;
             --color-selected: #bbdffb;
-            --color-multi: #e3f2fd;
             --color-highlight: #ffeb3b;
             --color-same-val: #fff9c4;
             
@@ -153,7 +152,7 @@
             border-top: var(--border-thick) solid var(--color-border);
             border-left: var(--border-thick) solid var(--color-border);
             background: white; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            cursor: crosshair;
+            cursor: pointer; /* 기본 포인터 */
         }
 
         .cell {
@@ -173,7 +172,6 @@
         .cell:nth-child(n+73) { border-bottom: var(--border-thick) solid var(--color-border); }
 
         .cell.selected { background-color: var(--color-selected) !important; }
-        .cell.multi-selected { background-color: var(--color-multi) !important; }
         .cell.highlighted-num { background-color: var(--color-highlight) !important; font-weight: bold; }
         .cell.error { color: var(--color-error) !important; }
         .cell-bg-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; opacity: 0.6; }
@@ -320,7 +318,8 @@
         let clueState = { top: [], bottom: [], left: [], right: [] };
         let historyStack = []; let redoStack = [];    
         
-        let selectedIndices = new Set();
+        // Single Selection State
+        let selectedCellIndex = null;
         let selectedClue = null;
         
         let inputMode = 'normal'; 
@@ -329,7 +328,6 @@
         let highlightTarget = null;
 
         let branches = {}; let currentBranchId = 'main';
-        let isDragging = false;
 
         const boardElement = document.getElementById('sudoku-board');
         const numpadElement = document.getElementById('numpad');
@@ -344,7 +342,6 @@
         const closeModalBtn = document.getElementById('close-modal');
 
         function initGame() {
-            // Include 'manuallyRemoved' array in initial state
             const initialGrid = Array(81).fill(null).map(() => ({ 
                 value: null, corner: [], center: [], colorIndex: 0, 
                 manuallyRemoved: [] 
@@ -361,7 +358,7 @@
             currentBranchId = 'main';
             loadBranchData('main');
 
-            selectedIndices.clear();
+            selectedCellIndex = null;
             selectedClue = null;
             isAutoCandidateOn = false;
             isHighlightMode = false;
@@ -378,7 +375,7 @@
             return null;
         }
 
-        // --- Auto Candidate Logic (Smart Restore - Center Only & Refill Self) ---
+        // --- Auto Candidate Logic (Center Only & User Manual Respect) ---
         function getValidCandidates(index) {
             const candidates = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9]);
             const row = Math.floor(index / 9); const col = index % 9; const boxRow = Math.floor(row / 3) * 3; const boxCol = Math.floor(col / 3) * 3;
@@ -400,9 +397,11 @@
             peers.forEach(peerIdx => {
                 const cell = gridState[peerIdx];
                 if (cell.value) return; 
+                // Do not restore if user manually removed it
                 if (cell.manuallyRemoved && cell.manuallyRemoved.includes(restoredVal)) return;
 
                 if (isValidPlacement(peerIdx, restoredVal)) {
+                    // Only Center
                     if (!cell.center.includes(restoredVal)) { 
                         cell.center.push(restoredVal); 
                         cell.center.sort((a,b)=>a-b); 
@@ -411,11 +410,11 @@
             });
         }
 
-        // NEW: Refill candidates for the cell itself when value is cleared
         function refillCurrentCell(index) {
             if (!isAutoCandidateOn) return;
             const cell = gridState[index];
             let possible = getValidCandidates(index);
+            // Don't add back manually removed
             if (cell.manuallyRemoved) {
                 possible = possible.filter(n => !cell.manuallyRemoved.includes(n));
             }
@@ -440,6 +439,9 @@
         function removeCandidate(index, val) {
             const cell = gridState[index];
             if (cell.value) return; 
+            // Only affect center notes for auto-clean usually, but consistent to do both?
+            // User requested "Center에 있는 정보를 손상시키지 말아줘" regarding bad restores.
+            // Removal should be fine on both as it follows logic.
             if (cell.corner.includes(val)) cell.corner = cell.corner.filter(n => n !== val);
             if (cell.center.includes(val)) cell.center = cell.center.filter(n => n !== val);
         }
@@ -468,17 +470,6 @@
         }
 
         // --- Selection & Highlight ---
-        function toggleSelection(index, addToExisting) {
-            if (addToExisting) {
-                if (selectedIndices.has(index)) selectedIndices.delete(index);
-                else selectedIndices.add(index);
-            } else {
-                selectedIndices.clear();
-                selectedIndices.add(index);
-            }
-            selectedClue = null; renderAll();
-        }
-
         function toggleHighlight() {
             isHighlightMode = !isHighlightMode;
             if (!isHighlightMode) highlightTarget = null;
@@ -489,12 +480,6 @@
             if (isHighlightMode) btnHighlight.classList.add('active-highlight');
             else btnHighlight.classList.remove('active-highlight');
         }
-
-        function setupBoardInteraction() {
-            boardElement.addEventListener('mouseleave', () => isDragging = false);
-            window.addEventListener('mouseup', () => isDragging = false);
-        }
-        setupBoardInteraction();
 
         // --- Rendering ---
         function renderBoard() {
@@ -507,10 +492,9 @@
                     const bgDiv = document.createElement('div'); bgDiv.className = 'cell-bg-layer';
                     bgDiv.style.backgroundColor = colorPalette[cell.colorIndex]; cellDiv.appendChild(bgDiv);
                 }
-                if (selectedIndices.has(index)) {
-                    if (selectedIndices.size > 1) cellDiv.classList.add('multi-selected');
-                    else cellDiv.classList.add('selected');
-                }
+                
+                if (index === selectedCellIndex) cellDiv.classList.add('selected');
+                
                 if (conflictIndices.has(index)) cellDiv.classList.add('error');
                 if (highlightTarget !== null && cell.value === highlightTarget) cellDiv.classList.add('highlighted-num');
 
@@ -531,25 +515,17 @@
                     }
                 }
 
-                cellDiv.addEventListener('mousedown', (e) => {
-                    e.preventDefault(); isDragging = true;
-                    const addTo = e.ctrlKey || e.metaKey;
-                    if (!addTo && !selectedIndices.has(index)) selectedIndices.clear();
-                    if (addTo) {
-                        if (selectedIndices.has(index)) selectedIndices.delete(index);
-                        else selectedIndices.add(index);
-                    } else { selectedIndices.add(index); }
-                    selectedClue = null; renderAll();
-                });
+                cellDiv.onmousedown = (e) => {
+                    selectedCellIndex = index;
+                    selectedClue = null;
+                    renderAll();
+                };
                 
-                cellDiv.addEventListener('mouseenter', (e) => {
-                    if (isDragging) { selectedIndices.add(index); renderAll(); }
-                });
                 boardElement.appendChild(cellDiv);
             });
         }
 
-        // --- Input Handling (Smart Restore) ---
+        // --- Input Handling ---
         function handleInput(inputVal, forceMode = null) {
             if (isHighlightMode && inputVal !== 0) {
                 if (highlightTarget === inputVal) highlightTarget = null;
@@ -562,67 +538,62 @@
                 if (currentVal.length < 3) clueState[selectedClue.side][selectedClue.index] = currentVal + inputVal.toString();
                 renderAll(); return;
             }
-            if (selectedIndices.size === 0) return;
+            if (selectedCellIndex === null) return;
             saveState();
 
+            const cell = gridState[selectedCellIndex];
             let effectiveMode = forceMode || inputMode;
 
-            selectedIndices.forEach(index => {
-                const cell = gridState[index];
+            if (effectiveMode === 'color') {
+                if (inputVal !== 0) { 
+                    if (cell.colorIndex === inputVal) cell.colorIndex = 0; else cell.colorIndex = inputVal; 
+                }
+            } else if (effectiveMode === 'normal') {
+                const oldVal = cell.value;
+                const newVal = (inputVal === 0) ? null : inputVal;
                 
-                if (effectiveMode === 'color') {
-                    if (inputVal !== 0) { 
-                        if (cell.colorIndex === inputVal) cell.colorIndex = 0; else cell.colorIndex = inputVal; 
+                // Toggle check
+                if (oldVal === newVal && newVal !== null) {
+                    cell.value = null;
+                    if (isAutoCandidateOn) {
+                        restoreCandidatesAround(selectedCellIndex, oldVal);
+                        refillCurrentCell(selectedCellIndex);
                     }
-                } else if (effectiveMode === 'normal') {
-                    const oldVal = cell.value;
-                    const newVal = (inputVal === 0) ? null : inputVal;
-                    
-                    // Logic: Toggle if same value is pressed
-                    if (oldVal === newVal && newVal !== null) {
-                        // Turning off the value -> clear it and refill notes
-                        cell.value = null;
-                        if (isAutoCandidateOn) {
-                            restoreCandidatesAround(index, oldVal);
-                            refillCurrentCell(index); // Refill self
-                        }
-                    } else {
-                        // Changing value
-                        cell.value = newVal;
-                        cell.corner = []; cell.center = [];
-
-                        if (isAutoCandidateOn) {
-                            if (oldVal) restoreCandidatesAround(index, oldVal);
-                            if (newVal) removeCandidateFromPeers(index, newVal);
-                            // If newVal is null (clearing), refill self
-                            if (newVal === null) refillCurrentCell(index);
-                        }
-                    }
-
-                } else if (effectiveMode === 'corner') {
-                    if (inputVal !== 0 && (cell.value === null || cell.value === 0)) {
-                        if (cell.corner.includes(inputVal)) {
-                            cell.corner = cell.corner.filter(n => n !== inputVal);
-                            if(!cell.manuallyRemoved) cell.manuallyRemoved = [];
-                            if(!cell.manuallyRemoved.includes(inputVal)) cell.manuallyRemoved.push(inputVal);
-                        } else {
-                            cell.corner.push(inputVal);
-                            if(cell.manuallyRemoved) cell.manuallyRemoved = cell.manuallyRemoved.filter(n => n !== inputVal);
-                        }
-                    }
-                } else if (effectiveMode === 'center') {
-                    if (inputVal !== 0 && (cell.value === null || cell.value === 0)) {
-                        if (cell.center.includes(inputVal)) {
-                            cell.center = cell.center.filter(n => n !== inputVal);
-                            if(!cell.manuallyRemoved) cell.manuallyRemoved = [];
-                            if(!cell.manuallyRemoved.includes(inputVal)) cell.manuallyRemoved.push(inputVal);
-                        } else {
-                            cell.center.push(inputVal);
-                            if(cell.manuallyRemoved) cell.manuallyRemoved = cell.manuallyRemoved.filter(n => n !== inputVal);
-                        }
+                } else {
+                    cell.value = newVal;
+                    cell.corner = []; cell.center = [];
+                    if (isAutoCandidateOn) {
+                        if (oldVal) restoreCandidatesAround(selectedCellIndex, oldVal);
+                        if (newVal) removeCandidateFromPeers(selectedCellIndex, newVal);
+                        if (newVal === null) refillCurrentCell(selectedCellIndex);
                     }
                 }
-            });
+
+            } else if (effectiveMode === 'corner') {
+                if (inputVal !== 0 && (cell.value === null || cell.value === 0)) {
+                    if (cell.corner.includes(inputVal)) {
+                        cell.corner = cell.corner.filter(n => n !== inputVal);
+                        if(!cell.manuallyRemoved) cell.manuallyRemoved = [];
+                        if(!cell.manuallyRemoved.includes(inputVal)) cell.manuallyRemoved.push(inputVal);
+                    } else {
+                        cell.corner.push(inputVal);
+                        cell.corner.sort((a,b)=>a-b);
+                        if(cell.manuallyRemoved) cell.manuallyRemoved = cell.manuallyRemoved.filter(n => n !== inputVal);
+                    }
+                }
+            } else if (effectiveMode === 'center') {
+                if (inputVal !== 0 && (cell.value === null || cell.value === 0)) {
+                    if (cell.center.includes(inputVal)) {
+                        cell.center = cell.center.filter(n => n !== inputVal);
+                        if(!cell.manuallyRemoved) cell.manuallyRemoved = [];
+                        if(!cell.manuallyRemoved.includes(inputVal)) cell.manuallyRemoved.push(inputVal);
+                    } else {
+                        cell.center.push(inputVal);
+                        cell.center.sort((a,b)=>a-b);
+                        if(cell.manuallyRemoved) cell.manuallyRemoved = cell.manuallyRemoved.filter(n => n !== inputVal);
+                    }
+                }
+            }
             renderBoard();
         }
 
@@ -633,24 +604,22 @@
                 if (currentVal.length > 0) clueState[selectedClue.side][selectedClue.index] = currentVal.slice(0, -1);
                 renderAll(); return;
             }
-            if (selectedIndices.size === 0) return;
+            if (selectedCellIndex === null) return;
 
-            selectedIndices.forEach(index => {
-                const cell = gridState[index];
-                if (inputMode === 'color') { cell.colorIndex = 0; }
-                else {
-                    if (cell.value !== null && cell.value !== 0) {
-                        const oldVal = cell.value;
-                        cell.value = null; 
-                        if (isAutoCandidateOn) {
-                            if (oldVal) restoreCandidatesAround(index, oldVal);
-                            refillCurrentCell(index); // Refill self
-                        }
-                    } else if (inputMode === 'normal') { 
-                        cell.corner = []; cell.center = []; 
+            const cell = gridState[selectedCellIndex];
+            if (inputMode === 'color') { cell.colorIndex = 0; }
+            else {
+                if (cell.value !== null && cell.value !== 0) {
+                    const oldVal = cell.value;
+                    cell.value = null; 
+                    if (isAutoCandidateOn) {
+                        if (oldVal) restoreCandidatesAround(selectedCellIndex, oldVal);
+                        refillCurrentCell(selectedCellIndex);
                     }
+                } else if (inputMode === 'normal') { 
+                    cell.corner = []; cell.center = []; 
                 }
-            });
+            }
             renderBoard();
         }
 
@@ -661,7 +630,7 @@
             clueState[side].forEach((val, index) => {
                 const div = document.createElement('div'); div.className = 'clue-cell'; div.textContent = val;
                 if (selectedClue && selectedClue.side === side && selectedClue.index === index) div.classList.add('selected');
-                div.onclick = () => { selectedIndices.clear(); selectedClue = { side, index }; renderAll(); };
+                div.onclick = () => { selectedCellIndex = null; selectedClue = { side, index }; renderAll(); };
                 container.appendChild(div);
             });
         }
@@ -713,7 +682,7 @@
         function closeTreeModal() { treeModal.classList.remove('open'); }
 
         function clearAnnotations() { if (!confirm("모든 메모를 삭제하시겠습니까?")) return; saveState(); gridState.forEach(cell => { cell.corner = []; cell.center = []; cell.manuallyRemoved = []; }); renderBoard(); }
-        function resetBoardOnly() { if (confirm("보드 안쪽 내용을 지우시겠습니까?")) { saveState(); gridState = Array(81).fill(null).map(() => ({ value: null, corner: [], center: [], colorIndex: 0, manuallyRemoved: [] })); selectedIndices.clear(); renderBoard(); } }
+        function resetBoardOnly() { if (confirm("보드 안쪽 내용을 지우시겠습니까?")) { saveState(); gridState = Array(81).fill(null).map(() => ({ value: null, corner: [], center: [], colorIndex: 0, manuallyRemoved: [] })); selectedCellIndex = null; renderBoard(); } }
         function newGame() { if (confirm("새 게임을 시작하시겠습니까?")) { saveState(); initGame(); } }
 
         function updateNumpad() {
@@ -760,14 +729,14 @@
 
             if (e.key === 'Backspace' || e.key === 'Delete') handleDelete();
             
-            else if (e.key.startsWith('Arrow') && selectedIndices.size <= 1) {
+            else if (e.key.startsWith('Arrow')) {
                 e.preventDefault();
-                let idx = selectedIndices.size === 1 ? [...selectedIndices][0] : 0;
+                let idx = selectedCellIndex === null ? 0 : selectedCellIndex;
                 if (e.key === 'ArrowRight') idx = (idx + 1) % 81;
                 if (e.key === 'ArrowLeft') idx = (idx - 1 + 81) % 81;
                 if (e.key === 'ArrowUp') idx = (idx - 9 + 81) % 81;
                 if (e.key === 'ArrowDown') idx = (idx + 9) % 81;
-                selectedIndices.clear(); selectedIndices.add(idx); renderAll();
+                selectedCellIndex = idx; renderAll();
             }
 
             if (e.key.toLowerCase() === 'z' && !e.ctrlKey) document.querySelector('[data-mode="normal"]').click();
