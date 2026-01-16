@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sudoku Editor (Fix: Center Only Restore)</title>
+    <title>Sudoku Editor (Perfect Auto-Candidate)</title>
     <style>
         /* --- 1. 변수 및 기본 설정 --- */
         :root {
@@ -378,7 +378,7 @@
             return null;
         }
 
-        // --- Auto Candidate Logic (Smart Restore - Center Only) ---
+        // --- Auto Candidate Logic (Smart Restore - Center Only & Refill Self) ---
         function getValidCandidates(index) {
             const candidates = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9]);
             const row = Math.floor(index / 9); const col = index % 9; const boxRow = Math.floor(row / 3) * 3; const boxCol = Math.floor(col / 3) * 3;
@@ -400,18 +400,26 @@
             peers.forEach(peerIdx => {
                 const cell = gridState[peerIdx];
                 if (cell.value) return; 
-                
-                // CORE LOGIC: Do not restore if user manually removed it
                 if (cell.manuallyRemoved && cell.manuallyRemoved.includes(restoredVal)) return;
 
                 if (isValidPlacement(peerIdx, restoredVal)) {
-                    // FIX: Only restore to CENTER notes
                     if (!cell.center.includes(restoredVal)) { 
                         cell.center.push(restoredVal); 
                         cell.center.sort((a,b)=>a-b); 
                     }
                 }
             });
+        }
+
+        // NEW: Refill candidates for the cell itself when value is cleared
+        function refillCurrentCell(index) {
+            if (!isAutoCandidateOn) return;
+            const cell = gridState[index];
+            let possible = getValidCandidates(index);
+            if (cell.manuallyRemoved) {
+                possible = possible.filter(n => !cell.manuallyRemoved.includes(n));
+            }
+            cell.center = possible;
         }
 
         function isValidPlacement(index, num) {
@@ -541,7 +549,7 @@
             });
         }
 
-        // --- Input Handling ---
+        // --- Input Handling (Smart Restore) ---
         function handleInput(inputVal, forceMode = null) {
             if (isHighlightMode && inputVal !== 0) {
                 if (highlightTarget === inputVal) highlightTarget = null;
@@ -570,12 +578,25 @@
                     const oldVal = cell.value;
                     const newVal = (inputVal === 0) ? null : inputVal;
                     
-                    cell.value = newVal;
-                    cell.corner = []; cell.center = [];
+                    // Logic: Toggle if same value is pressed
+                    if (oldVal === newVal && newVal !== null) {
+                        // Turning off the value -> clear it and refill notes
+                        cell.value = null;
+                        if (isAutoCandidateOn) {
+                            restoreCandidatesAround(index, oldVal);
+                            refillCurrentCell(index); // Refill self
+                        }
+                    } else {
+                        // Changing value
+                        cell.value = newVal;
+                        cell.corner = []; cell.center = [];
 
-                    if (isAutoCandidateOn) {
-                        if (oldVal) restoreCandidatesAround(index, oldVal);
-                        if (newVal) removeCandidateFromPeers(index, newVal);
+                        if (isAutoCandidateOn) {
+                            if (oldVal) restoreCandidatesAround(index, oldVal);
+                            if (newVal) removeCandidateFromPeers(index, newVal);
+                            // If newVal is null (clearing), refill self
+                            if (newVal === null) refillCurrentCell(index);
+                        }
                     }
 
                 } else if (effectiveMode === 'corner') {
@@ -621,7 +642,10 @@
                     if (cell.value !== null && cell.value !== 0) {
                         const oldVal = cell.value;
                         cell.value = null; 
-                        if (isAutoCandidateOn && oldVal) restoreCandidatesAround(index, oldVal);
+                        if (isAutoCandidateOn) {
+                            if (oldVal) restoreCandidatesAround(index, oldVal);
+                            refillCurrentCell(index); // Refill self
+                        }
                     } else if (inputMode === 'normal') { 
                         cell.corner = []; cell.center = []; 
                     }
