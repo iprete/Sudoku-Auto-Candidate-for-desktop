@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ultimate Sudoku Editor (Zero & Safe Reset)</title>
+    <title>Sudoku Editor (Auto Fill & Clean)</title>
     <style>
         /* --- 1. 변수 및 기본 설정 --- */
         :root {
@@ -12,7 +12,11 @@
             
             --color-border: #333;
             --color-thin: #dcdcdc;
-            --color-selected: #bbdffb;
+            --color-selected: #bbdffb;      /* 기본 선택 (파랑) */
+            --color-multi: #e3f2fd;         /* 다중 선택 (연한 파랑) */
+            --color-highlight: #ffeb3b;     /* 숫자 하이라이트 (진한 노랑) */
+            --color-same-val: #fff9c4;      /* 같은 숫자 은은한 하이라이트 */
+            
             --color-clue-selected: #e3f2fd;
             --color-text: #333;
             --color-error: #e53935;
@@ -43,11 +47,9 @@
             border-radius: 20px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.08);
             user-select: none;
-            
             width: fit-content;
             max-width: 99vw;
             margin: 10px;
-            
             display: flex;
             flex-direction: column; 
             align-items: center;
@@ -74,14 +76,14 @@
         }
 
         @media (min-width: 950px) {
-            .sidebar { width: 300px; align-items: stretch; }
+            .sidebar { width: 320px; align-items: stretch; }
         }
 
-        header { margin-bottom: 20px; text-align: center; }
+        header { margin-bottom: 15px; text-align: center; width: 100%; }
         h1 { margin: 0 0 10px 0; font-size: 1.8rem; color: #1a1a1a; }
 
         .top-controls {
-            display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-bottom: 20px;
+            display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-bottom: 15px;
         }
         
         .btn-top {
@@ -92,22 +94,33 @@
             transition: all 0.2s;
         }
         .btn-top:hover { transform: translateY(-1px); }
-        .btn-top:active { transform: translateY(0); }
         .btn-top:disabled { opacity: 0.5; cursor: not-allowed; }
 
         .btn-top.active-toggle { background-color: #2e7d32; }
+        .btn-top.active-highlight { background-color: #fdd835; color: black; } 
+        
         .btn-orange { background-color: #ed8936; }
-        .btn-red { background-color: #e53e3e; } /* Board Reset */
-        .btn-black { background-color: #000; } /* New Game */
+        .btn-red { background-color: #e53e3e; } 
+        .btn-black { background-color: #000; }
+        .btn-purple { background-color: #6b46c1; } 
 
+        /* --- Branch Controls --- */
+        .branch-controls {
+            width: 100%; background: #f0f4f8; padding: 10px; border-radius: 10px;
+            margin-bottom: 15px; display: flex; flex-direction: column; gap: 8px; border: 1px solid #d1d9e6;
+        }
+        .branch-header { display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: bold; color: #4a5568; }
+        .branch-actions { display: flex; gap: 5px; }
+        .branch-info { font-size: 13px; color: #2d3748; background: white; padding: 6px; border-radius: 6px; border: 1px solid #cbd5e0; text-align: center; }
+        .branch-info.red-warning { background-color: #fff5f5; color: #c53030; border-color: #fc8181; }
+        .btn-branch { padding: 6px 10px; font-size: 12px; border-radius: 6px; border: none; cursor: pointer; color: white; }
+        .btn-branch.add { background-color: #3182ce; }
+        .btn-branch.del { background-color: #e53e3e; }
 
         /* --- 4. 게임 영역 --- */
         .game-area {
             display: grid;
-            grid-template-areas:
-                ". top ."
-                "left board right"
-                ". bottom .";
+            grid-template-areas: ". top ." "left board right" ". bottom .";
             grid-template-columns: var(--cell-size) auto var(--cell-size);
             grid-template-rows: var(--cell-size) auto var(--cell-size);
             gap: 0;
@@ -124,54 +137,33 @@
         .area-board { grid-area: board; }
 
         .clue-cell {
-            width: var(--cell-size);
-            height: var(--cell-size);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: var(--font-size-clue);
-            color: #555;
-            cursor: pointer;
-            border-radius: 4px;
-            font-weight: 600;
+            width: var(--cell-size); height: var(--cell-size);
+            display: flex; justify-content: center; align-items: center;
+            font-size: var(--font-size-clue); color: #555; cursor: pointer;
+            border-radius: 4px; font-weight: 600;
         }
         .clue-cell:hover { background-color: rgba(0,0,0,0.05); }
-        .clue-cell.selected { 
-            background-color: var(--color-clue-selected); 
-            color: #1565c0;
-            border: 2px solid #90caf9;
-        }
-
+        .clue-cell.selected { background-color: var(--color-clue-selected); color: #1565c0; border: 2px solid #90caf9; }
 
         /* --- 5. 보드 스타일 --- */
         .board {
             display: inline-grid;
             grid-template-columns: repeat(9, var(--cell-size));
             grid-template-rows: repeat(9, var(--cell-size));
-            
             border-top: var(--border-thick) solid var(--color-border);
             border-left: var(--border-thick) solid var(--color-border);
-            
-            background: white;
-            position: relative;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            background: white; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            cursor: pointer;
         }
 
         .cell {
-            width: var(--cell-size);
-            height: var(--cell-size);
-            position: relative;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: var(--font-size-val);
-            font-weight: 500;
-            cursor: pointer;
-            color: var(--color-text);
-            z-index: 1;
-
+            width: var(--cell-size); height: var(--cell-size);
+            position: relative; display: flex; justify-content: center; align-items: center;
+            font-size: var(--font-size-val); font-weight: 500; cursor: pointer;
+            color: var(--color-text); z-index: 1;
             border-right: var(--border-thin) solid var(--color-thin);
             border-bottom: var(--border-thin) solid var(--color-thin);
+            user-select: none;
         }
 
         .cell:nth-child(3n) { border-right: var(--border-thick) solid var(--color-border); }
@@ -181,6 +173,8 @@
         .cell:nth-child(n+73) { border-bottom: var(--border-thick) solid var(--color-border); }
 
         .cell.selected { background-color: var(--color-selected) !important; }
+        .cell.multi-selected { background-color: var(--color-multi) !important; }
+        .cell.highlighted-num { background-color: var(--color-highlight) !important; font-weight: bold; }
         .cell.error { color: var(--color-error) !important; }
         .cell-bg-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; opacity: 0.6; }
 
@@ -195,57 +189,70 @@
             flex-wrap: wrap; font-size: var(--font-size-note); line-height: 1; color: #555; padding: 1px;
         }
 
-
         /* --- 6. 입력 컨트롤 --- */
         .input-controls { width: 100%; }
-
-        .mode-toggles { 
-            display: flex; gap: 4px; margin-bottom: 15px; background: #e2e8f0;
-            padding: 5px; border-radius: 10px; width: 100%;
-        }
+        .mode-toggles { display: flex; gap: 4px; margin-bottom: 15px; background: #e2e8f0; padding: 5px; border-radius: 10px; width: 100%; }
         .mode-btn {
             flex: 1; border: none; background: transparent; padding: 10px 0;
-            cursor: pointer; font-weight: 600; border-radius: 8px; font-size: 14px; color: #718096;
-            transition: all 0.2s;
+            cursor: pointer; font-weight: 600; border-radius: 8px; font-size: 14px; color: #718096; transition: all 0.2s;
         }
         .mode-btn.active { background-color: white; color: #2d3748; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
 
-        .numpad { 
-            display: grid; gap: 8px; width: 100%;
-            /* 모바일: 1-5 / 6-0 / X (11개 버튼 배치) */
-            grid-template-columns: repeat(5, 1fr); 
-        }
-
+        .numpad { display: grid; gap: 8px; width: 100%; grid-template-columns: repeat(5, 1fr); }
         @media (min-width: 950px) {
             .numpad { grid-template-columns: repeat(3, 1fr); gap: 10px; }
             button.action-btn { height: 50px; font-size: 22px; }
-            
-            /* PC 배치: 1-9 (3줄), 0(2칸 차지), X(1칸 차지) */
             .btn-num-0 { grid-column: span 2; }
             .btn-delete { grid-column: span 1; }
         }
-
-        /* 모바일 배치: X버튼 꽉 채우기 */
         @media (max-width: 949px) {
             .btn-delete { grid-column: 1 / -1; background-color: #f8d7da !important; color: #721c24 !important; }
         }
 
         button.action-btn {
-            border: 1px solid #e2e8f0; background: white;
-            cursor: pointer; border-radius: 12px; font-size: 20px;
+            border: 1px solid #e2e8f0; background: white; cursor: pointer; border-radius: 12px; font-size: 20px;
             display: flex; justify-content: center; align-items: center; padding: 10px 0;
             transition: all 0.1s; box-shadow: 0 2px 0 #cbd5e0; color: #2d3748;
         }
         button.action-btn:active { transform: translateY(2px); box-shadow: none; }
-        
-        button.color-swatch {
-            border: 2px solid rgba(0,0,0,0.1); color: transparent !important; 
-        }
+        button.color-swatch { border: 2px solid rgba(0,0,0,0.1); color: transparent !important; }
         button.color-swatch:hover { border-color: rgba(0,0,0,0.3); }
 
-        @media (hover: hover) {
-            .cell:hover { background-color: rgba(0,0,0,0.03); }
-        }
+        @media (hover: hover) { .cell:hover { background-color: rgba(0,0,0,0.03); } }
+
+        /* --- 7. Modal & Tree --- */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: none; justify-content: center; align-items: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-content { background: white; width: 90vw; max-width: 800px; height: 80vh; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; }
+        .modal-header { padding: 15px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; background: #f9f9f9; }
+        .modal-header h2 { margin: 0; font-size: 1.2rem; }
+        .close-modal { background: none; border: none; font-size: 24px; cursor: pointer; color: #555; }
+        .tree-container { flex: 1; overflow: auto; padding: 40px; display: flex; justify-content: center; align-items: flex-start; background: #fdfdfd; }
+        .tree ul { padding-top: 20px; position: relative; transition: all 0.5s; display: flex; justify-content: center; }
+        .tree li { float: left; text-align: center; list-style-type: none; position: relative; padding: 20px 5px 0 5px; transition: all 0.5s; }
+        .tree li::before, .tree li::after { content: ''; position: absolute; top: 0; right: 50%; border-top: 2px solid #ccc; width: 50%; height: 20px; }
+        .tree li::after { right: auto; left: 50%; border-left: 2px solid #ccc; }
+        .tree li:only-child::after, .tree li:only-child::before { display: none; }
+        .tree li:only-child { padding-top: 0; }
+        .tree li:first-child::before, .tree li:last-child::after { border: 0 none; }
+        .tree li:last-child::before { border-right: 2px solid #ccc; border-radius: 0 5px 0 0; }
+        .tree li:first-child::after { border-radius: 5px 0 0 0; }
+        .tree ul ul::before { content: ''; position: absolute; top: 0; left: 50%; border-left: 2px solid #ccc; width: 0; height: 20px; }
+        .tree-node-wrapper { border: 2px solid #cbd5e0; border-radius: 6px; background: white; display: inline-flex; flex-direction: column; min-width: 110px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: all 0.2s; overflow: hidden; }
+        .tree-node-content { padding: 8px 12px; cursor: pointer; text-align: center; }
+        .tree-node-name { font-weight: bold; color: #4a5568; font-size: 14px; }
+        .tree-node-tag { font-size: 10px; color: #718096; margin-top: 2px; }
+        .tree-node-wrapper.red-branch { border-color: #fc8181; background-color: #fff5f5; }
+        .tree-node-wrapper.red-branch .tree-node-name { color: #c53030; }
+        .tree-node-wrapper.red-branch .tree-node-tag { color: #e53e3e; }
+        .tree-node-footer { border-top: 1px solid #e2e8f0; display: flex; }
+        .btn-toggle-red { flex: 1; border: none; background: #f7fafc; padding: 4px; font-size: 11px; cursor: pointer; color: #718096; transition: background 0.2s; }
+        .btn-toggle-red:hover { background: #edf2f7; color: #2d3748; }
+        .tree-node-wrapper.red-branch .btn-toggle-red { background: #fed7d7; color: #c53030; }
+        .tree-node-wrapper.red-branch .btn-toggle-red:hover { background: #feb2b2; }
+        .tree-node-wrapper.current { border-color: #3182ce; box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.3); }
+        .tree-node-wrapper.current .tree-node-name { color: #2b6cb0; }
+        .tree-node-wrapper:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
     </style>
 </head>
 <body>
@@ -253,9 +260,7 @@
         <div class="game-area">
             <div class="clue-container area-top"><div id="clues-top" class="clue-row"></div></div>
             <div class="clue-container area-left"><div id="clues-left" class="clue-col"></div></div>
-            
             <div id="sudoku-board" class="board area-board"></div>
-            
             <div class="clue-container area-right"><div id="clues-right" class="clue-col"></div></div>
             <div class="clue-container area-bottom"><div id="clues-bottom" class="clue-row"></div></div>
         </div>
@@ -266,12 +271,24 @@
                 <div class="top-controls">
                     <button id="btn-undo" class="btn-top" title="Ctrl+Z">Undo</button>
                     <button id="btn-redo" class="btn-top" title="Ctrl+Y">Redo</button>
+                    <button id="btn-highlight" class="btn-top">Highlight</button>
                     <button id="btn-auto" class="btn-top">Auto Candidate</button>
-                    <button id="btn-clear-notes" class="btn-top btn-orange">Clear Memos</button>
-                    <button id="btn-reset" class="btn-top btn-red">Reset Board</button>
-                    <button id="btn-new-game" class="btn-top btn-black">New Game</button>
+                    <button id="btn-clear-notes" class="btn-top btn-orange">Clear</button>
+                    <button id="btn-tree" class="btn-top btn-purple">Tree View</button>
+                    <button id="btn-reset" class="btn-top btn-red">Reset</button>
+                    <button id="btn-new-game" class="btn-top btn-black">New</button>
                 </div>
             </header>
+
+            <div class="branch-controls">
+                <div class="branch-header">
+                    <span>Branch Manager</span>
+                    <div class="branch-actions">
+                        <button id="btn-branch-add" class="btn-branch add">+ Add</button>
+                    </div>
+                </div>
+                <div id="current-branch-info" class="branch-info">Current: Main Branch</div>
+            </div>
 
             <div class="mode-toggles">
                 <button class="mode-btn active" data-mode="normal">Normal</button>
@@ -284,400 +301,390 @@
         </div>
     </div>
 
+    <div id="tree-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Branch Tree Visualization</h2>
+                <button id="close-modal" class="close-modal">&times;</button>
+            </div>
+            <div class="tree-container">
+                <div class="tree" id="tree-root"></div>
+            </div>
+        </div>
+    </div>
+
     <script>
-        const colorPalette = [
-            null, 
-            '#ffadad', '#ffd6a5', '#fdffb6', 
-            '#caffbf', '#9bf6ff', '#a0c4ff', 
-            '#bdb2ff', '#ffc6ff', '#dcdcdc'
-        ];
+        const colorPalette = [null, '#ffadad', '#ffd6a5', '#fdffb6', '#caffbf', '#9bf6ff', '#a0c4ff', '#bdb2ff', '#ffc6ff', '#dcdcdc'];
 
         let gridState = []; 
         let clueState = { top: [], bottom: [], left: [], right: [] };
+        let historyStack = []; let redoStack = [];    
         
-        let historyStack = []; 
-        let redoStack = [];    
-        let selection = null; 
+        // Multi-Selection State
+        let selectedIndices = new Set();
+        let selectedClue = null;
+        
         let inputMode = 'normal'; 
         let isAutoCandidateOn = false;
+        let isHighlightMode = false;
+        let highlightTarget = null;
+
+        let branches = {}; let currentBranchId = 'main';
+        let isDragging = false;
 
         const boardElement = document.getElementById('sudoku-board');
         const numpadElement = document.getElementById('numpad');
         const modeButtons = document.querySelectorAll('.mode-btn');
         const btnAuto = document.getElementById('btn-auto');
+        const btnHighlight = document.getElementById('btn-highlight');
         const btnUndo = document.getElementById('btn-undo');
         const btnRedo = document.getElementById('btn-redo');
+        const currentBranchInfo = document.getElementById('current-branch-info');
+        const treeModal = document.getElementById('tree-modal');
+        const treeRoot = document.getElementById('tree-root');
+        const closeModalBtn = document.getElementById('close-modal');
 
         function initGame() {
-            gridState = Array(81).fill(null).map(() => ({
-                value: null, corner: [], center: [], colorIndex: 0 
-            }));
-            
-            clueState = {
-                top: Array(9).fill(""),
-                bottom: Array(9).fill(""),
-                left: Array(9).fill(""),
-                right: Array(9).fill("")
-            };
+            const initialGrid = Array(81).fill(null).map(() => ({ value: null, corner: [], center: [], colorIndex: 0 }));
+            const initialClues = { top: Array(9).fill(""), bottom: Array(9).fill(""), left: Array(9).fill(""), right: Array(9).fill("") };
 
-            selection = null;
+            branches = {
+                'main': {
+                    id: 'main', name: 'Main Branch', parentId: null, isRed: false,
+                    grid: JSON.parse(JSON.stringify(initialGrid)), clues: JSON.parse(JSON.stringify(initialClues)),
+                    history: [], redo: []
+                }
+            };
+            currentBranchId = 'main';
+            loadBranchData('main');
+
+            selectedIndices.clear();
+            selectedClue = null;
             isAutoCandidateOn = false;
-            historyStack = [];
-            redoStack = [];
+            isHighlightMode = false;
+            highlightTarget = null;
             
-            updateUndoRedoUI();
-            updateAutoCandidateBtn();
-            renderAll();
-            updateNumpad();
+            updateBranchUI(); updateUndoRedoUI(); updateAutoCandidateBtn(); updateHighlightBtn();
+            renderAll(); updateNumpad();
         }
 
-        function saveState() {
-            const state = {
-                grid: JSON.parse(JSON.stringify(gridState)),
-                clues: JSON.parse(JSON.stringify(clueState))
-            };
-            historyStack.push(state);
-            redoStack = [];
-            updateUndoRedoUI();
+        // --- Auto Candidate Logic (Fill All if Empty / Clean only if not) ---
+        function getValidCandidates(index) {
+            const candidates = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+            const row = Math.floor(index / 9);
+            const col = index % 9;
+            const boxRow = Math.floor(row / 3) * 3;
+            const boxCol = Math.floor(col / 3) * 3;
+
+            // Row
+            for (let c = 0; c < 9; c++) {
+                const val = gridState[row * 9 + c].value;
+                if (val && val !== 0) candidates.delete(val);
+            }
+            // Col
+            for (let r = 0; r < 9; r++) {
+                const val = gridState[r * 9 + col].value;
+                if (val && val !== 0) candidates.delete(val);
+            }
+            // Box
+            for (let r = 0; r < 3; r++) {
+                for (let c = 0; c < 3; c++) {
+                    const val = gridState[(boxRow + r) * 9 + (boxCol + c)].value;
+                    if (val && val !== 0) candidates.delete(val);
+                }
+            }
+            return Array.from(candidates);
         }
 
-        function restoreState(state) {
-            gridState = state.grid;
-            clueState = state.clues;
-            renderAll();
-            updateUndoRedoUI();
-        }
-
-        function undo() {
-            if (historyStack.length === 0) return;
-            const currentState = { grid: JSON.parse(JSON.stringify(gridState)), clues: JSON.parse(JSON.stringify(clueState)) };
-            redoStack.push(currentState);
-            restoreState(historyStack.pop());
-        }
-
-        function redo() {
-            if (redoStack.length === 0) return;
-            const currentState = { grid: JSON.parse(JSON.stringify(gridState)), clues: JSON.parse(JSON.stringify(clueState)) };
-            historyStack.push(currentState);
-            restoreState(redoStack.pop());
-        }
-
-        function updateUndoRedoUI() {
-            btnUndo.disabled = historyStack.length === 0;
-            btnRedo.disabled = redoStack.length === 0;
-        }
-
-        function renderAll() {
-            renderBoard();
-            renderClues('top');
-            renderClues('bottom');
-            renderClues('left');
-            renderClues('right');
-        }
-
-        function getConflictIndices() {
-            const conflicts = new Set();
+        function performAutoCleanup() {
             for (let i = 0; i < 81; i++) {
-                if (!gridState[i].value) continue;
                 const val = gridState[i].value;
+                if (!val || val === 0) continue;
+
                 const row = Math.floor(i / 9);
                 const col = i % 9;
                 const boxRow = Math.floor(row / 3) * 3;
                 const boxCol = Math.floor(col / 3) * 3;
 
-                for (let c = 0; c < 9; c++) {
-                    const idx = row * 9 + c;
-                    if (idx !== i && gridState[idx].value === val) { conflicts.add(i); conflicts.add(idx); }
-                }
-                for (let r = 0; r < 9; r++) {
-                    const idx = r * 9 + col;
-                    if (idx !== i && gridState[idx].value === val) { conflicts.add(i); conflicts.add(idx); }
-                }
+                for (let c = 0; c < 9; c++) removeCandidate(row * 9 + c, val);
+                for (let r = 0; r < 9; r++) removeCandidate(r * 9 + col, val);
                 for (let r = 0; r < 3; r++) {
                     for (let c = 0; c < 3; c++) {
-                        const idx = (boxRow + r) * 9 + (boxCol + c);
-                        if (idx !== i && gridState[idx].value === val) { conflicts.add(i); conflicts.add(idx); }
+                        removeCandidate((boxRow + r) * 9 + (boxCol + c), val);
                     }
                 }
             }
-            return conflicts;
         }
 
+        function removeCandidate(index, val) {
+            const cell = gridState[index];
+            if (cell.value) return; 
+            if (cell.corner.includes(val)) cell.corner = cell.corner.filter(n => n !== val);
+            if (cell.center.includes(val)) cell.center = cell.center.filter(n => n !== val);
+        }
+
+        function toggleAutoCandidate() {
+            if (!isAutoCandidateOn) {
+                saveState();
+                // Check: Are there ANY center notes?
+                const hasCenterNotes = gridState.some(c => c.center.length > 0);
+                
+                if (!hasCenterNotes) {
+                    // Fill mode
+                    for (let i = 0; i < 81; i++) {
+                        if (!gridState[i].value) {
+                            gridState[i].center = getValidCandidates(i);
+                        }
+                    }
+                }
+            }
+            
+            isAutoCandidateOn = !isAutoCandidateOn;
+            updateAutoCandidateBtn();
+            if (isAutoCandidateOn) performAutoCleanup(); // Clean up conflicts
+            renderBoard();
+        }
+
+        function updateAutoCandidateBtn() {
+            if (isAutoCandidateOn) { btnAuto.textContent = "Auto Candidate: ON"; btnAuto.classList.add('active-toggle'); }
+            else { btnAuto.textContent = "Auto Candidate: OFF"; btnAuto.classList.remove('active-toggle'); }
+        }
+
+        // --- Selection & Highlight ---
+        function toggleSelection(index, addToExisting) {
+            if (addToExisting) {
+                if (selectedIndices.has(index)) selectedIndices.delete(index);
+                else selectedIndices.add(index);
+            } else {
+                selectedIndices.clear();
+                selectedIndices.add(index);
+            }
+            selectedClue = null; renderAll();
+        }
+
+        function toggleHighlight() {
+            isHighlightMode = !isHighlightMode;
+            if (!isHighlightMode) highlightTarget = null;
+            updateHighlightBtn();
+            renderAll();
+        }
+        function updateHighlightBtn() {
+            if (isHighlightMode) btnHighlight.classList.add('active-highlight');
+            else btnHighlight.classList.remove('active-highlight');
+        }
+
+        function setupBoardInteraction() {
+            boardElement.addEventListener('mousedown', () => isDragging = true);
+            window.addEventListener('mouseup', () => isDragging = false);
+        }
+        setupBoardInteraction();
+
+        // --- Rendering ---
         function renderBoard() {
             boardElement.innerHTML = '';
             const conflictIndices = getConflictIndices();
 
             gridState.forEach((cell, index) => {
-                const cellDiv = document.createElement('div');
-                cellDiv.classList.add('cell');
-                
+                const cellDiv = document.createElement('div'); cellDiv.className = 'cell';
                 if (cell.colorIndex > 0) {
-                    const bgDiv = document.createElement('div');
-                    bgDiv.className = 'cell-bg-layer';
-                    bgDiv.style.backgroundColor = colorPalette[cell.colorIndex];
-                    cellDiv.appendChild(bgDiv);
+                    const bgDiv = document.createElement('div'); bgDiv.className = 'cell-bg-layer';
+                    bgDiv.style.backgroundColor = colorPalette[cell.colorIndex]; cellDiv.appendChild(bgDiv);
                 }
-
-                if (selection && selection.type === 'board' && selection.index === index) {
-                    cellDiv.classList.add('selected');
+                if (selectedIndices.has(index)) {
+                    if (selectedIndices.size > 1) cellDiv.classList.add('multi-selected');
+                    else cellDiv.classList.add('selected');
                 }
                 if (conflictIndices.has(index)) cellDiv.classList.add('error');
+                if (highlightTarget !== null && cell.value === highlightTarget) cellDiv.classList.add('highlighted-num');
 
                 if (cell.value) {
-                    const valSpan = document.createElement('span');
-                    valSpan.textContent = cell.value;
-                    cellDiv.appendChild(valSpan);
+                    const valSpan = document.createElement('span'); valSpan.textContent = cell.value; cellDiv.appendChild(valSpan);
                 } else {
                     if (cell.corner.length > 0) {
-                        const cornerDiv = document.createElement('div');
-                        cornerDiv.className = 'candidates corner';
+                        const cornerDiv = document.createElement('div'); cornerDiv.className = 'candidates corner';
                         for(let i=1; i<=9; i++) {
-                            const span = document.createElement('span');
-                            span.className = 'corner-num';
-                            span.textContent = cell.corner.includes(i) ? i : '';
-                            cornerDiv.appendChild(span);
+                            const span = document.createElement('span'); span.className = 'corner-num';
+                            span.textContent = cell.corner.includes(i) ? i : ''; cornerDiv.appendChild(span);
                         }
                         cellDiv.appendChild(cornerDiv);
                     }
                     if (cell.center.length > 0) {
-                        const centerDiv = document.createElement('div');
-                        centerDiv.className = 'candidates center';
-                        centerDiv.textContent = cell.center.sort().join('');
-                        cellDiv.appendChild(centerDiv);
+                        const centerDiv = document.createElement('div'); centerDiv.className = 'candidates center';
+                        centerDiv.textContent = cell.center.sort().join(''); cellDiv.appendChild(centerDiv);
                     }
                 }
 
-                cellDiv.onclick = () => {
-                    selection = { type: 'board', index: index };
-                    renderAll();
-                };
+                cellDiv.addEventListener('mousedown', (e) => {
+                    const addTo = e.ctrlKey || e.metaKey;
+                    toggleSelection(index, addTo);
+                });
+                cellDiv.addEventListener('mouseenter', (e) => {
+                    if (isDragging) { selectedIndices.add(index); renderAll(); }
+                });
                 boardElement.appendChild(cellDiv);
             });
         }
 
-        function renderClues(side) {
-            const container = document.getElementById(`clues-${side}`);
-            container.innerHTML = '';
-            clueState[side].forEach((val, index) => {
-                const div = document.createElement('div');
-                div.className = 'clue-cell';
-                div.textContent = val;
-                if (selection && selection.type === 'clue' && selection.side === side && selection.index === index) {
-                    div.classList.add('selected');
-                }
-                div.onclick = () => {
-                    selection = { type: 'clue', side: side, index: index };
-                    renderAll();
-                };
-                container.appendChild(div);
-            });
-        }
-
-        function updateNumpad() {
-            numpadElement.innerHTML = '';
-            // 1~9 버튼
-            for (let i = 1; i <= 9; i++) {
-                createNumBtn(i);
+        // --- Input Handling ---
+        function handleInput(inputVal, forceMode = null) {
+            if (isHighlightMode && inputVal !== 0) {
+                if (highlightTarget === inputVal) highlightTarget = null;
+                else highlightTarget = inputVal;
+                renderAll(); return;
             }
-            // 0 버튼
-            createNumBtn(0, 'btn-num-0');
-            
-            // X 버튼
-            const delBtn = document.createElement('button');
-            delBtn.className = 'action-btn btn-delete';
-            delBtn.textContent = 'X';
-            delBtn.onclick = handleDelete;
-            numpadElement.appendChild(delBtn);
-        }
-
-        function createNumBtn(num, extraClass = '') {
-            const btn = document.createElement('button');
-            btn.className = `action-btn ${extraClass}`;
-            if (inputMode === 'color' && num !== 0) {
-                btn.style.backgroundColor = colorPalette[num]; 
-                btn.classList.add('color-swatch');
-                btn.onclick = () => handleInput(num);
-            } else {
-                btn.style.backgroundColor = 'white';
-                btn.textContent = num;
-                btn.onclick = () => handleInput(num);
+            if (selectedClue) {
+                saveState();
+                const currentVal = clueState[selectedClue.side][selectedClue.index];
+                if (currentVal.length < 3) clueState[selectedClue.side][selectedClue.index] = currentVal + inputVal.toString();
+                renderAll(); return;
             }
-            numpadElement.appendChild(btn);
-        }
-
-        function handleInput(inputVal) {
-            if (!selection) return;
+            if (selectedIndices.size === 0) return;
             saveState();
 
-            // 1. 외부 힌트 (0 허용, 문자열 연결)
-            if (selection.type === 'clue') {
-                const currentVal = clueState[selection.side][selection.index];
-                if (currentVal.length < 3) { // 최대 3자리
-                    clueState[selection.side][selection.index] = currentVal + inputVal.toString();
-                }
-                renderAll();
-                return;
-            }
+            let effectiveMode = forceMode || inputMode;
+            let changesMade = false;
 
-            // 2. 보드 입력 (0도 일단 입력 허용, 보통 보드엔 1-9지만 유저가 원할 수 있음)
-            const cell = gridState[selection.index];
-            let valueChanged = false;
-
-            if (inputMode === 'color') {
-                if (inputVal !== 0) { // 0번 색상은 없음
-                    if (cell.colorIndex === inputVal) cell.colorIndex = 0;
-                    else cell.colorIndex = inputVal;
+            selectedIndices.forEach(index => {
+                const cell = gridState[index];
+                if (effectiveMode === 'color') {
+                    if (inputVal !== 0) { 
+                        if (cell.colorIndex === inputVal) cell.colorIndex = 0; else cell.colorIndex = inputVal; 
+                        changesMade = true;
+                    }
+                } else if (effectiveMode === 'normal') {
+                    if (inputVal === 0) cell.value = 0; else cell.value = inputVal;
+                    cell.corner = []; cell.center = []; changesMade = true;
+                } else if (effectiveMode === 'corner') {
+                    if (inputVal !== 0 && (cell.value === null || cell.value === 0)) {
+                        if (cell.corner.includes(inputVal)) cell.corner = cell.corner.filter(n => n !== inputVal);
+                        else cell.corner.push(inputVal);
+                        changesMade = true;
+                    }
+                } else if (effectiveMode === 'center') {
+                    if (inputVal !== 0 && (cell.value === null || cell.value === 0)) {
+                        if (cell.center.includes(inputVal)) cell.center = cell.center.filter(n => n !== inputVal);
+                        else cell.center.push(inputVal);
+                        changesMade = true;
+                    }
                 }
-            } else if (inputMode === 'normal') {
-                cell.value = inputVal === 0 ? null : inputVal; // 보드에서 0은 보통 지우기지만, 명시적 0 요청이 있다면 `inputVal`로 저장. 여기선 0=Clear로 처리하거나 0 표시. 스도쿠 룰상 0은 없음 -> 지우기로 처리? 아니면 표시?
-                // 요청: "바깥 그리드에 0을 못 넣게 하면 어떡해" -> 바깥은 해결.
-                // 안쪽은? 일단 0 누르면 0 표시되게 해드림 (변형 스도쿠 대비)
-                if (inputVal === 0) cell.value = 0; 
-                else cell.value = inputVal;
+            });
 
-                cell.corner = []; 
-                cell.center = [];
-                valueChanged = true;
-            } else if (inputMode === 'corner') {
-                 if (inputVal !== 0 && cell.value === null) {
-                    if (cell.corner.includes(inputVal)) cell.corner = cell.corner.filter(n => n !== inputVal);
-                    else cell.corner.push(inputVal);
-                }
-            } else if (inputMode === 'center') {
-                if (inputVal !== 0 && cell.value === null) {
-                    if (cell.center.includes(inputVal)) cell.center = cell.center.filter(n => n !== inputVal);
-                    else cell.center.push(inputVal);
-                }
-            }
-
-            if (isAutoCandidateOn && valueChanged) refreshAllCandidates();
+            if (isAutoCandidateOn && changesMade) performAutoCleanup();
             renderBoard();
         }
 
         function handleDelete() {
-            if (!selection) return;
             saveState();
-
-            if (selection.type === 'clue') {
-                const currentVal = clueState[selection.side][selection.index];
-                if (currentVal.length > 0) {
-                    clueState[selection.side][selection.index] = currentVal.slice(0, -1);
-                }
-                renderAll();
-                return;
+            if (selectedClue) {
+                const currentVal = clueState[selectedClue.side][selectedClue.index];
+                if (currentVal.length > 0) clueState[selectedClue.side][selectedClue.index] = currentVal.slice(0, -1);
+                renderAll(); return;
             }
-
-            const cell = gridState[selection.index];
-            let valueDeleted = false;
-
-            if (inputMode === 'color') {
-                cell.colorIndex = 0;
-            } else {
-                if (cell.value !== null) valueDeleted = true;
-                cell.value = null;
-                if (inputMode === 'normal') {
-                    cell.corner = [];
-                    cell.center = [];
+            if (selectedIndices.size === 0) return;
+            let changesMade = false;
+            selectedIndices.forEach(index => {
+                const cell = gridState[index];
+                if (inputMode === 'color') { cell.colorIndex = 0; changesMade = true; }
+                else {
+                    if (cell.value !== null && cell.value !== 0) { cell.value = null; changesMade = true; }
+                    else if (inputMode === 'normal') { cell.corner = []; cell.center = []; changesMade = true; }
                 }
-            }
-
-            if (isAutoCandidateOn && valueDeleted) refreshAllCandidates();
+            });
+            if (isAutoCandidateOn && changesMade) performAutoCleanup();
             renderBoard();
         }
 
-        function toggleAutoCandidate() {
-            if (!isAutoCandidateOn) saveState();
-            isAutoCandidateOn = !isAutoCandidateOn;
-            updateAutoCandidateBtn();
-            if (isAutoCandidateOn) refreshAllCandidates();
-            renderBoard();
+        // --- Helpers ---
+        function renderAll() { renderBoard(); renderClues('top'); renderClues('bottom'); renderClues('left'); renderClues('right'); }
+        function renderClues(side) {
+            const container = document.getElementById(`clues-${side}`); container.innerHTML = '';
+            clueState[side].forEach((val, index) => {
+                const div = document.createElement('div'); div.className = 'clue-cell'; div.textContent = val;
+                if (selectedClue && selectedClue.side === side && selectedClue.index === index) div.classList.add('selected');
+                div.onclick = () => { selectedIndices.clear(); selectedClue = { side, index }; renderAll(); };
+                container.appendChild(div);
+            });
         }
-
-        function updateAutoCandidateBtn() {
-            if (isAutoCandidateOn) {
-                btnAuto.textContent = "Auto Candidate: ON";
-                btnAuto.classList.add('active-toggle');
-            } else {
-                btnAuto.textContent = "Auto Candidate: OFF";
-                btnAuto.classList.remove('active-toggle');
-            }
-        }
-
-        function refreshAllCandidates() {
+        function getConflictIndices() {
+            const conflicts = new Set();
             for (let i = 0; i < 81; i++) {
-                if (gridState[i].value !== null) {
-                    gridState[i].center = [];
-                    continue;
-                }
-                const candidates = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9]);
-                const row = Math.floor(i / 9);
-                const col = i % 9;
-                const boxRow = Math.floor(row / 3) * 3;
-                const boxCol = Math.floor(col / 3) * 3;
-
-                for (let c = 0; c < 9; c++) {
-                    const val = gridState[row * 9 + c].value;
-                    if (val && val !== 0) candidates.delete(val);
-                }
-                for (let r = 0; r < 9; r++) {
-                    const val = gridState[r * 9 + col].value;
-                    if (val && val !== 0) candidates.delete(val);
-                }
-                for (let r = 0; r < 3; r++) {
-                    for (let c = 0; c < 3; c++) {
-                        const val = gridState[(boxRow + r) * 9 + (boxCol + c)].value;
-                        if (val && val !== 0) candidates.delete(val);
-                    }
-                }
-                gridState[i].center = Array.from(candidates);
+                if (!gridState[i].value) continue;
+                const val = gridState[i].value;
+                const row = Math.floor(i / 9); const col = i % 9; const boxRow = Math.floor(row / 3) * 3; const boxCol = Math.floor(col / 3) * 3;
+                for (let c = 0; c < 9; c++) { const idx = row * 9 + c; if (idx !== i && gridState[idx].value === val) { conflicts.add(i); conflicts.add(idx); } }
+                for (let r = 0; r < 9; r++) { const idx = r * 9 + col; if (idx !== i && gridState[idx].value === val) { conflicts.add(i); conflicts.add(idx); } }
+                for (let r = 0; r < 3; r++) { for (let c = 0; c < 3; c++) { const idx = (boxRow + r) * 9 + (boxCol + c); if (idx !== i && gridState[idx].value === val) { conflicts.add(i); conflicts.add(idx); } } }
             }
+            return conflicts;
         }
 
-        function clearAnnotations() {
-            if (!confirm("모든 메모를 삭제하시겠습니까? (숫자/힌트/색상 유지)")) return;
-            saveState(); 
-            gridState.forEach(cell => {
-                cell.corner = [];
-                cell.center = [];
-            });
-            renderBoard();
+        // --- Branch Logic ---
+        function saveCurrentBranchData() { branches[currentBranchId].grid = JSON.parse(JSON.stringify(gridState)); branches[currentBranchId].clues = JSON.parse(JSON.stringify(clueState)); branches[currentBranchId].history = JSON.parse(JSON.stringify(historyStack)); branches[currentBranchId].redo = JSON.parse(JSON.stringify(redoStack)); }
+        function loadBranchData(branchId) { const branch = branches[branchId]; gridState = JSON.parse(JSON.stringify(branch.grid)); clueState = JSON.parse(JSON.stringify(branch.clues)); historyStack = JSON.parse(JSON.stringify(branch.history)); redoStack = JSON.parse(JSON.stringify(branch.redo)); currentBranchId = branchId; }
+        function createBranch() {
+            saveCurrentBranchData();
+            const parentName = branches[currentBranchId].name; const branchName = prompt(`'${parentName}'에서 새로운 분기를 생성합니다.\n이름을 입력하세요:`, `Branch ${Object.keys(branches).length}`); if (!branchName) return;
+            const newId = 'branch_' + Date.now(); branches[newId] = { id: newId, name: branchName, parentId: currentBranchId, isRed: branches[currentBranchId].isRed, grid: JSON.parse(JSON.stringify(gridState)), clues: JSON.parse(JSON.stringify(clueState)), history: JSON.parse(JSON.stringify(historyStack)), redo: [] };
+            currentBranchId = newId; updateBranchUI(); renderAll(); openTreeModal();
+        }
+        function switchBranch(newId) { if (newId === currentBranchId) return; saveCurrentBranchData(); loadBranchData(newId); updateBranchUI(); renderAll(); updateUndoRedoUI(); closeTreeModal(); }
+        function updateBranchUI() { currentBranchInfo.textContent = `Current: ${branches[currentBranchId].name}`; if (branches[currentBranchId].isRed) currentBranchInfo.classList.add('red-warning'); else currentBranchInfo.classList.remove('red-warning'); }
+        function toggleBranchRed(branchId) { const newState = !branches[branchId].isRed; applyRedRecursive(branchId, newState); openTreeModal(); updateBranchUI(); }
+        function applyRedRecursive(parentId, state) { branches[parentId].isRed = state; Object.values(branches).forEach(branch => { if (branch.parentId === parentId) applyRedRecursive(branch.id, state); }); }
+
+        // --- Tree View ---
+        function buildTreeData() { const tree = {}; Object.keys(branches).forEach(id => { tree[id] = { ...branches[id], children: [] }; }); const rootNodes = []; Object.keys(tree).forEach(id => { const node = tree[id]; if (node.parentId && tree[node.parentId]) tree[node.parentId].children.push(node); else rootNodes.push(node); }); return rootNodes; }
+        function renderTreeNode(node) {
+            const isCurrent = node.id === currentBranchId; const li = document.createElement('li');
+            const wrapper = document.createElement('div'); wrapper.className = `tree-node-wrapper ${isCurrent ? 'current' : ''} ${node.isRed ? 'red-branch' : ''}`;
+            const content = document.createElement('div'); content.className = 'tree-node-content'; content.innerHTML = `<div class="tree-node-name">${node.name}</div><div class="tree-node-tag">${node.id === 'main' ? 'ROOT' : 'Sub'}</div>`;
+            content.onclick = () => switchBranch(node.id);
+            const footer = document.createElement('div'); footer.className = 'tree-node-footer';
+            const toggleBtn = document.createElement('button'); toggleBtn.className = 'btn-toggle-red'; toggleBtn.textContent = node.isRed ? 'Invalid' : 'Mark Invalid';
+            toggleBtn.onclick = (e) => { e.stopPropagation(); toggleBranchRed(node.id); };
+            footer.appendChild(toggleBtn); wrapper.appendChild(content); wrapper.appendChild(footer); li.appendChild(wrapper);
+            if (node.children.length > 0) { const ul = document.createElement('ul'); node.children.forEach(child => ul.appendChild(renderTreeNode(child))); li.appendChild(ul); } return li;
+        }
+        function openTreeModal() { saveCurrentBranchData(); const roots = buildTreeData(); treeRoot.innerHTML = ''; const ul = document.createElement('ul'); roots.forEach(root => ul.appendChild(renderTreeNode(root))); treeRoot.appendChild(ul); treeModal.classList.add('open'); }
+        function closeTreeModal() { treeModal.classList.remove('open'); }
+
+        // --- Standard Logic ---
+        function saveState() { const state = { grid: JSON.parse(JSON.stringify(gridState)), clues: JSON.parse(JSON.stringify(clueState)) }; historyStack.push(state); redoStack = []; updateUndoRedoUI(); }
+        function restoreState(state) { gridState = state.grid; clueState = state.clues; renderAll(); updateUndoRedoUI(); }
+        function undo() { if (historyStack.length === 0) return; redoStack.push({ grid: JSON.parse(JSON.stringify(gridState)), clues: JSON.parse(JSON.stringify(clueState)) }); restoreState(historyStack.pop()); }
+        function redo() { if (redoStack.length === 0) return; historyStack.push({ grid: JSON.parse(JSON.stringify(gridState)), clues: JSON.parse(JSON.stringify(clueState)) }); restoreState(redoStack.pop()); }
+        function updateUndoRedoUI() { btnUndo.disabled = historyStack.length === 0; btnRedo.disabled = redoStack.length === 0; }
+        
+        function clearAnnotations() { if (!confirm("모든 메모를 삭제하시겠습니까?")) return; saveState(); gridState.forEach(cell => { cell.corner = []; cell.center = []; }); renderBoard(); }
+        function resetBoardOnly() { if (confirm("보드 안쪽 내용을 지우시겠습니까?")) { saveState(); gridState = Array(81).fill(null).map(() => ({ value: null, corner: [], center: [], colorIndex: 0 })); selectedIndices.clear(); renderBoard(); } }
+        function newGame() { if (confirm("새 게임을 시작하시겠습니까?")) { saveState(); initGame(); } }
+
+        function updateNumpad() {
+            numpadElement.innerHTML = '';
+            for (let i = 1; i <= 9; i++) createNumBtn(i);
+            createNumBtn(0, 'btn-num-0');
+            const delBtn = document.createElement('button'); delBtn.className = 'action-btn btn-delete'; delBtn.textContent = 'X'; delBtn.onclick = handleDelete;
+            numpadElement.appendChild(delBtn);
+        }
+        function createNumBtn(num, extraClass = '') {
+            const btn = document.createElement('button'); btn.className = `action-btn ${extraClass}`;
+            if (inputMode === 'color' && num !== 0) { btn.style.backgroundColor = colorPalette[num]; btn.classList.add('color-swatch'); btn.onclick = () => handleInput(num); }
+            else { btn.style.backgroundColor = 'white'; btn.textContent = num; btn.onclick = () => handleInput(num); }
+            numpadElement.appendChild(btn);
         }
 
-        // [수정됨] Reset Board: 보드 안쪽만 지움 (힌트 유지)
-        function resetBoardOnly() {
-            if (confirm("보드 안쪽 내용을 모두 지우시겠습니까? (바깥쪽 힌트는 유지됩니다)")) {
-                saveState();
-                gridState = Array(81).fill(null).map(() => ({
-                    value: null, corner: [], center: [], colorIndex: 0 
-                }));
-                // clueState는 건드리지 않음
-                if (selection && selection.type === 'board') selection = null;
-                renderBoard();
-            }
-        }
-
-        // [추가됨] New Game: 힌트 포함 전체 초기화
-        function newGame() {
-            if (confirm("새 게임을 시작하시겠습니까? (모든 힌트와 보드가 초기화됩니다)")) {
-                saveState();
-                initGame(); // 완전 초기화
-            }
-        }
-
-        modeButtons.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                modeButtons.forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-                inputMode = e.target.dataset.mode;
-                updateNumpad();
-            });
-        });
+        // --- Event Listeners ---
+        modeButtons.forEach(btn => btn.addEventListener('click', (e) => { modeButtons.forEach(b => b.classList.remove('active')); e.target.classList.add('active'); inputMode = e.target.dataset.mode; updateNumpad(); }));
+        document.getElementById('btn-branch-add').addEventListener('click', createBranch);
+        document.getElementById('btn-tree').addEventListener('click', openTreeModal);
+        closeModalBtn.addEventListener('click', closeTreeModal);
+        treeModal.addEventListener('click', (e) => { if (e.target === treeModal) closeTreeModal(); });
 
         btnAuto.addEventListener('click', toggleAutoCandidate);
+        btnHighlight.addEventListener('click', toggleHighlight);
         document.getElementById('btn-reset').addEventListener('click', resetBoardOnly);
         document.getElementById('btn-new-game').addEventListener('click', newGame);
         document.getElementById('btn-clear-notes').addEventListener('click', clearAnnotations);
-        
         btnUndo.addEventListener('click', undo);
         btnRedo.addEventListener('click', redo);
 
@@ -685,23 +692,22 @@
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
             if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); redo(); return; }
             
-            // 0~9 입력 허용
-            if (e.key >= '0' && e.key <= '9') handleInput(parseInt(e.key));
-            else if (e.key === 'Backspace' || e.key === 'Delete') handleDelete();
+            if (e.key >= '0' && e.key <= '9') {
+                if (e.shiftKey) handleInput(parseInt(e.key), 'corner');
+                else if (e.ctrlKey || e.metaKey) handleInput(parseInt(e.key), 'center');
+                else handleInput(parseInt(e.key));
+            } else if (e.key === 'Backspace' || e.key === 'Delete') handleDelete();
             
-            // 방향키
-            else if (e.key.startsWith('Arrow')) {
+            else if (e.key.startsWith('Arrow') && selectedIndices.size <= 1) {
                 e.preventDefault();
-                if (selection && selection.type === 'board') {
-                    let idx = selection.index;
-                    if (e.key === 'ArrowRight') idx = (idx + 1) % 81;
-                    if (e.key === 'ArrowLeft') idx = (idx - 1 + 81) % 81;
-                    if (e.key === 'ArrowUp') idx = (idx - 9 + 81) % 81;
-                    if (e.key === 'ArrowDown') idx = (idx + 9) % 81;
-                    selection = { type: 'board', index: idx };
-                    renderAll();
-                }
+                let idx = selectedIndices.size === 1 ? [...selectedIndices][0] : 0;
+                if (e.key === 'ArrowRight') idx = (idx + 1) % 81;
+                if (e.key === 'ArrowLeft') idx = (idx - 1 + 81) % 81;
+                if (e.key === 'ArrowUp') idx = (idx - 9 + 81) % 81;
+                if (e.key === 'ArrowDown') idx = (idx + 9) % 81;
+                selectedIndices.clear(); selectedIndices.add(idx); renderAll();
             }
+
             if (e.key.toLowerCase() === 'z' && !e.ctrlKey) document.querySelector('[data-mode="normal"]').click();
             if (e.key.toLowerCase() === 'x') document.querySelector('[data-mode="corner"]').click();
             if (e.key.toLowerCase() === 'c') document.querySelector('[data-mode="center"]').click();
