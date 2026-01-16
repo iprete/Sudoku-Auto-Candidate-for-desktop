@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sudoku Editor (Fixed Multi-Select & Shortcuts)</title>
+    <title>Sudoku Editor (Fixed Input)</title>
     <style>
         /* --- 1. 변수 및 기본 설정 --- */
         :root {
@@ -12,9 +12,9 @@
             
             --color-border: #333;
             --color-thin: #dcdcdc;
-            --color-selected: #bbdffb;      /* 기본 선택 (파랑) */
-            --color-multi: #bbdffb;         /* 다중 선택 (동일한 파랑) */
-            --color-highlight: #ffeb3b;     /* 숫자 하이라이트 (진한 노랑) */
+            --color-selected: #bbdffb;
+            --color-multi: #bbdffb; 
+            --color-highlight: #ffeb3b;
             
             --color-clue-selected: #e3f2fd;
             --color-text: #333;
@@ -152,7 +152,7 @@
             border-top: var(--border-thick) solid var(--color-border);
             border-left: var(--border-thick) solid var(--color-border);
             background: white; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            cursor: crosshair; /* 드래그 가능 커서 */
+            cursor: crosshair;
         }
 
         .cell {
@@ -366,9 +366,9 @@
             renderAll(); updateNumpad();
         }
 
-        // --- Helper: Get Number from Key Event (Fixes Shift+1 = !) ---
+        // --- Improved Input Detection (Fixes Shift+Number and Numpad) ---
         function getNumberFromKey(e) {
-            // Check Code first (Physical key location)
+            // Priority: Check e.code (Physical Key) to ignore Shift state (e.g. "!" from "1")
             if (e.code.startsWith('Digit')) {
                 const num = parseInt(e.code.replace('Digit', ''));
                 if (!isNaN(num)) return num;
@@ -377,8 +377,9 @@
                 const num = parseInt(e.code.replace('Numpad', ''));
                 if (!isNaN(num)) return num;
             }
-            // Fallback for special cases
+            // Fallback for simple numeric keys if code is weird
             if (e.key >= '0' && e.key <= '9') return parseInt(e.key);
+            
             return null;
         }
 
@@ -459,7 +460,6 @@
             else btnHighlight.classList.remove('active-highlight');
         }
 
-        // --- Board Interaction (Fixed Drag & Multi-Select) ---
         function setupBoardInteraction() {
             boardElement.addEventListener('mouseleave', () => isDragging = false);
             window.addEventListener('mouseup', () => isDragging = false);
@@ -501,17 +501,15 @@
                     }
                 }
 
-                // FIXED MOUSE EVENTS
+                // FIXED MOUSE EVENTS (Prevention of drag defaults)
                 cellDiv.addEventListener('mousedown', (e) => {
-                    e.preventDefault(); // Prevents native text selection/drag behavior
+                    e.preventDefault(); // Stop text selection
                     isDragging = true;
                     const addTo = e.ctrlKey || e.metaKey;
                     
-                    // If not holding Ctrl, start a new selection
                     if (!addTo && !selectedIndices.has(index)) {
                         selectedIndices.clear();
                     }
-                    // If clicking a cell, ensure it's selected. If holding Ctrl, toggle.
                     if (addTo) {
                         if (selectedIndices.has(index)) selectedIndices.delete(index);
                         else selectedIndices.add(index);
@@ -694,39 +692,32 @@
         btnRedo.addEventListener('click', redo);
 
         document.addEventListener('keydown', (e) => {
-            // Undo/Redo
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
             if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); redo(); return; }
             
-            // Number Input (Using e.code to handle Shift+1 => 1 properly)
-            let inputNum = getNumberFromKey(e);
-            if (inputNum !== null) {
-                if (e.shiftKey) handleInput(inputNum, 'corner');
-                else if (e.ctrlKey || e.metaKey) handleInput(inputNum, 'center');
-                else handleInput(inputNum);
+            // KEY INPUT FIX: Use a helper function that checks e.code to ignore Shift modifiers
+            const num = getNumberFromKey(e);
+            if (num !== null) {
+                // Prevent browser shortcuts (like Ctrl+1 switching tabs, or Shift+1 writing !)
+                e.preventDefault(); 
+                if (e.shiftKey) handleInput(num, 'corner');
+                else if (e.ctrlKey || e.metaKey) handleInput(num, 'center');
+                else handleInput(num);
                 return;
             }
 
             if (e.key === 'Backspace' || e.key === 'Delete') handleDelete();
             
-            // Arrow Keys (Move Selection)
-            else if (e.key.startsWith('Arrow')) {
+            else if (e.key.startsWith('Arrow') && selectedIndices.size <= 1) {
                 e.preventDefault();
-                // If nothing selected, start at 0
-                let idx = selectedIndices.size > 0 ? [...selectedIndices][selectedIndices.size-1] : 0; 
-                
+                let idx = selectedIndices.size === 1 ? [...selectedIndices][0] : 0;
                 if (e.key === 'ArrowRight') idx = (idx + 1) % 81;
                 if (e.key === 'ArrowLeft') idx = (idx - 1 + 81) % 81;
                 if (e.key === 'ArrowUp') idx = (idx - 9 + 81) % 81;
                 if (e.key === 'ArrowDown') idx = (idx + 9) % 81;
-                
-                // Clear and set new (Single cursor movement)
-                selectedIndices.clear(); 
-                selectedIndices.add(idx); 
-                renderAll();
+                selectedIndices.clear(); selectedIndices.add(idx); renderAll();
             }
 
-            // Mode Shortcuts
             if (e.key.toLowerCase() === 'z' && !e.ctrlKey) document.querySelector('[data-mode="normal"]').click();
             if (e.key.toLowerCase() === 'x') document.querySelector('[data-mode="corner"]').click();
             if (e.key.toLowerCase() === 'c') document.querySelector('[data-mode="center"]').click();
